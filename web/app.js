@@ -226,43 +226,64 @@ async function query(ip, scroll) {
 
 /* ================= ASN monitor ================= */
 const asn = {
-  ws: null, started: false, paused: false, stopped: false, initialDone: false,
+  ws: null, started: false, paused: true, stopped: false, initialDone: false,
   rows: [], cache: new Map(), pending: new Map(), queue: [], active: 0,
-  collectTimer: null, renderTimer: null,
+  renderTimer: null, pollTimer: null,
   start() {
     if (this.started) return;
     this.started = true; this.stopped = false; this.initialDone = false; this.rows = [];
     $("asn-body").innerHTML = '<tr class="empty-row"><td colspan="6">正在获取最近路由更新…</td></tr>';
     $("asn-count").textContent = "0"; $("asn-pause").textContent = "开启实时";
     this.setConn("", "获取中…");
-    this.connect();
-    this.collectTimer = setTimeout(() => this.finishInitial(), 2500);
+    this.loadSnapshot();
   },
   setConn(cls, text) { const el = $("asn-conn"); el.className = `conn-state ${cls}`; $("asn-conn-text").textContent = text; },
-  connect() {
-    let ws; try { ws = new WebSocket("wss://ris-live.ripe.net/v1/ws/?client=iplens"); } catch { this.setConn("error", "浏览器不支持 WebSocket"); this.finishInitial(); return; }
-    this.ws = ws;
-    ws.onopen = () => { ws.send(JSON.stringify({ type: "ris_subscribe", data: { type: "UPDATE" } })); };
-    ws.onmessage = (e) => { let msg; try { msg = JSON.parse(e.data); } catch { return; } this.handle(msg); };
-    ws.onclose = () => { if (this.started && !this.stopped) { this.setConn("error", "连接断开，3 秒后重连…"); setTimeout(() => { if (!this.stopped) this.connect(); }, 3000); } };
-    ws.onerror = () => { this.setConn("error", "连接错误"); };
+  async loadSnapshot() {
+    try {
+      const res = await fetchTimeout(`${API}?feed=bgp`, 12000);
+      const d = await res.json();
+      if (!d || d.ok !== true || !Array.isArray(d.rows)) throw new Error("bad_feed");
+      this.rows = d.rows.slice(-100);
+      this.finishInitial();
+    } catch {
+      this.finishInitial();
+    }
   },
+  connect() {
+    let ws; try { ws = new WebSocket("wss://ris-live.ripe.net/v1/ws/?client=iplens"); } catch { this.startPolling(); return; }
+    this.ws = ws;
+    ws.onopen = () => { ws.send(JSON.stringify({ type: "ris_subscribe", data: { type: "UPDATE" } })); this.stopPolling(); this.setConn("live", "实时连接"); };
+    ws.onmessage = (e) => { if (this.paused) return; let msg; try { msg = JSON.parse(e.data); } catch { return; } this.handle(msg); };
+    ws.onclose = () => { if (this.started && !this.stopped && !this.paused) { this.setConn("error", "直连断开，改用服务端快照…"); this.startPolling(); } };
+    ws.onerror = () => { if (!this.paused) this.startPolling(); };
+  },
+  startPolling() {
+    if (this.pollTimer || this.paused || this.stopped) return;
+    this.setConn("live", "实时连接 · 服务端中转");
+    this.pollTimer = setInterval(async () => {
+      if (this.paused || this.stopped) return;
+      try {
+        const res = await fetchTimeout(`${API}?feed=bgp`, 12000);
+        const d = await res.json();
+        if (d && d.ok === true && Array.isArray(d.rows)) { this.rows = d.rows.slice(-100); this.scheduleRender(); }
+      } catch {}
+    }, 8000);
+  },
+  stopPolling() { if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; } },
   handle(msg) {
-    if (this.initialDone && this.paused) return;
+    if (this.paused) return;
     if (msg.type !== "ris_message") return; const d = msg.data; if (!d || d.type !== "UPDATE") return;
     const path = d.path || []; const origin = path.length ? path[path.length - 1] : null; const ts = (d.timestamp || Date.now() / 1000) * 1000;
     for (const ann of d.announcements || []) for (const pfx of ann.prefixes || []) this.pushRow(ts, pfx, origin, "announce");
     for (const pfx of d.withdrawals || []) this.pushRow(ts, pfx, null, "withdraw");
-    if (!this.initialDone && this.rows.length >= 100) this.finishInitial();
   },
   pushRow(ts, pfx, origin, type) {
     this.rows.push({ ts, pfx, origin, type });
     if (this.rows.length > 100) this.rows.splice(0, this.rows.length - 100);
-    if (this.initialDone && !this.paused) this.scheduleRender();
+    if (!this.paused) this.scheduleRender();
   },
   finishInitial() {
     if (this.initialDone) return; this.initialDone = true;
-    clearTimeout(this.collectTimer);
     this.paused = true;
     $("asn-pause").textContent = "开启实时";
     this.render();
@@ -311,8 +332,15 @@ const asn = {
     if (!this.initialDone) return;
     this.paused = !this.paused;
     $("asn-pause").textContent = this.paused ? "开启实时" : "暂停";
-    this.setConn(this.paused ? "paused" : "live", this.paused ? "静态快照 · 已暂停" : "实时连接");
-    if (!this.paused) { this.render(); this.scheduleRender(); }
+    if (this.paused) {
+      this.stopPolling();
+      if (this.ws) { try { this.ws.close(); } catch {} this.ws = null; }
+      this.setConn("paused", "静态快照 · 已暂停");
+    } else {
+      this.setConn("", "连接中…");
+      this.connect();
+      this.render(); this.scheduleRender();
+    }
   },
   clear() { this.rows = []; this.render(); },
 };

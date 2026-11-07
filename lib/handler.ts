@@ -307,6 +307,93 @@ async function lookup(ip: string): Promise<Report> {
 const asnCache = new Map<number, { at: number; data: Record<string, unknown> }>();
 const ASN_TTL = 60 * 60 * 1000;
 
+type BgpRow = { ts: number; pfx: string; origin: number | null; type: "announce" | "withdraw" };
+type BgpSnapshot = { ok: true; source: "ris-live"; collectedAt: string; rows: BgpRow[] };
+const BGP_TTL = 25 * 1000;
+let bgpSnapshot: { at: number; data: BgpSnapshot } | null = null;
+let bgpPending: Promise<BgpSnapshot> | null = null;
+
+function parseBgpMessage(msg: any, rows: BgpRow[]) {
+  if (msg?.type !== "ris_message") return;
+  const d = msg.data;
+  if (!d || d.type !== "UPDATE") return;
+  const path = Array.isArray(d.path) ? d.path : [];
+  const origin = path.length && Number.isInteger(path[path.length - 1]) ? path[path.length - 1] : null;
+  const ts = (typeof d.timestamp === "number" ? d.timestamp : Date.now() / 1000) * 1000;
+  for (const ann of d.announcements || []) {
+    for (const pfx of ann?.prefixes || []) {
+      if (typeof pfx === "string" && pfx.includes("/")) rows.push({ ts, pfx, origin, type: "announce" });
+    }
+  }
+  for (const pfx of d.withdrawals || []) {
+    if (typeof pfx === "string" && pfx.includes("/")) rows.push({ ts, pfx, origin: null, type: "withdraw" });
+  }
+}
+
+async function collectBgpSnapshot(): Promise<BgpSnapshot> {
+  const rows: BgpRow[] = [];
+  return await new Promise<BgpSnapshot>((resolve, reject) => {
+    let settled = false;
+    let ws: any;
+    const finish = (err?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { ws?.close(); } catch {}
+      if (err) reject(err);
+      else resolve({ ok: true, source: "ris-live", collectedAt: new Date().toISOString(), rows: rows.slice(-100) });
+    };
+    const timer = setTimeout(() => finish(rows.length ? undefined : new Error("no_updates")), 6000);
+    const onMessage = (e: any) => {
+      let msg: any;
+      try { msg = JSON.parse(typeof e.data === "string" ? e.data : ""); } catch { return; }
+      parseBgpMessage(msg, rows);
+      if (rows.length >= 100) finish();
+    };
+    const subscribe = () => {
+      try { ws.send(JSON.stringify({ type: "ris_subscribe", data: { type: "UPDATE" } })); }
+      catch { finish(new Error("subscribe_failed")); }
+    };
+    const attach = (sock: any) => {
+      ws = sock;
+      if (typeof ws.addEventListener === "function") {
+        ws.addEventListener("message", onMessage);
+        ws.addEventListener("close", () => finish(rows.length ? undefined : new Error("closed_early")));
+        ws.addEventListener("error", () => finish(new Error("websocket_error")));
+      } else {
+        ws.onmessage = onMessage;
+        ws.onclose = () => finish(rows.length ? undefined : new Error("closed_early"));
+        ws.onerror = () => finish(new Error("websocket_error"));
+      }
+    };
+    const url = "https://ris-live.ripe.net/v1/ws/?client=iplens-pages";
+    if (typeof WebSocket !== "undefined") {
+      const sock = new WebSocket(url.replace(/^https:/, "wss:"));
+      attach(sock);
+      sock.addEventListener("open", subscribe);
+      sock.addEventListener("error", () => finish(new Error("connect_failed")));
+    } else {
+      fetch(url, { headers: { Upgrade: "websocket" } }).then((res) => {
+        const sock = (res as any).webSocket;
+        if (!sock || res.status !== 101) { finish(new Error("websocket_upgrade_failed")); return; }
+        sock.accept();
+        attach(sock);
+        subscribe();
+      }).catch(() => finish(new Error("connect_failed")));
+    }
+  });
+}
+
+async function lookupBgpFeed(): Promise<BgpSnapshot> {
+  if (bgpSnapshot && Date.now() - bgpSnapshot.at < BGP_TTL) return bgpSnapshot.data;
+  if (!bgpPending) {
+    bgpPending = collectBgpSnapshot()
+      .then((data) => { bgpSnapshot = { at: Date.now(), data }; return data; })
+      .finally(() => { bgpPending = null; });
+  }
+  return bgpPending;
+}
+
 async function lookupAsn(asn: number, prefix: string | null): Promise<Record<string, unknown>> {
   const hit = asnCache.get(asn);
   if (hit && Date.now() - hit.at < ASN_TTL) return hit.data;
@@ -349,6 +436,14 @@ export async function handler(req: Request): Promise<Response> {
   }
 
   const url = new URL(req.url);
+
+  if (url.searchParams.get("feed") === "bgp") {
+    try {
+      return json(await lookupBgpFeed());
+    } catch {
+      return json({ ok: false, error: "upstream_unavailable", message: "BGP 路由流暂时不可用，请稍后重试" }, 502);
+    }
+  }
 
   const asnParam = url.searchParams.get("asn");
   if (asnParam !== null) {

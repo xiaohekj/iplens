@@ -223,7 +223,7 @@
       <div class="view-head">
         <p class="eyebrow">BGP ROUTING · GLOBAL UPDATES</p>
         <h1>ASN <span class="grad-text">变化监控</span></h1>
-        <p class="view-sub">基于 RIPE RIS Live 全球 BGP 路由流，打开即静态展示最近的前缀公告与路由变更及其源 ASN 归属，可按需开启实时刷新。</p>
+        <p class="view-sub">基于 RIPE RIS Live 全球 BGP 路由流，由服务端采集最近的前缀公告与路由变更及其源 ASN 归属，打开即静态展示，无需手动开启；可按需切换实时刷新。</p>
       </div>
       <div class="card tool-card">
         <div class="tool-bar">
@@ -240,7 +240,7 @@
             <tbody id="asn-body"><tr class="empty-row"><td colspan="6">正在获取最近路由更新…</td></tr></tbody>
           </table>
         </div>
-        <p class="tool-note">数据来自 RIPE NCC RIS Live 公共 BGP 流；国家与名称按源 ASN 异步补全并缓存。默认静态展示最近 100 条变更，点击「开启实时」后每 3 秒安静增量刷新。</p>
+        <p class="tool-note">数据来自 RIPE NCC RIS Live 公共 BGP 流，由服务端采集并缓存，浏览器无需直连路由流；国家与名称按源 ASN 异步补全并缓存。默认静态展示最近 100 条变更，点击「开启实时」后安静增量刷新。</p>
       </div>
     </div>
   </section>
