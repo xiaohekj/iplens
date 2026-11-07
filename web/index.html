@@ -221,26 +221,26 @@
   <section class="view" id="view-asn" data-view="asn" hidden>
     <div class="container">
       <div class="view-head">
-        <p class="eyebrow">BGP ROUTING · LIVE FEED</p>
+        <p class="eyebrow">BGP ROUTING · GLOBAL UPDATES</p>
         <h1>ASN <span class="grad-text">变化监控</span></h1>
-        <p class="view-sub">订阅 RIPE RIS Live 全球 BGP 路由更新流，实时呈现前缀公告与路由变更的源 ASN 归属。</p>
+        <p class="view-sub">基于 RIPE RIS Live 全球 BGP 路由流，打开即静态展示最近的前缀公告与路由变更及其源 ASN 归属，可按需开启实时刷新。</p>
       </div>
       <div class="card tool-card">
         <div class="tool-bar">
           <div class="conn-state" id="asn-conn"><i class="conn-dot"></i><span id="asn-conn-text">未连接</span></div>
           <div class="tool-bar-right">
-            <span class="asn-count">已捕获 <b id="asn-count">0</b> 条更新</span>
-            <button class="btn btn-ghost btn-sm" id="asn-pause" type="button">暂停</button>
+            <span class="asn-count">最近 <b id="asn-count">0</b> 条</span>
+            <button class="btn btn-ghost btn-sm" id="asn-pause" type="button">开启实时</button>
             <button class="btn btn-ghost btn-sm" id="asn-clear" type="button">清空</button>
           </div>
         </div>
         <div class="table-scroll">
           <table class="data-table" id="asn-table">
             <thead><tr><th>变更时间</th><th>国家</th><th>CIDR</th><th>新 ASN</th><th>名称</th><th>类型</th></tr></thead>
-            <tbody id="asn-body"><tr class="empty-row"><td colspan="6">正在连接 RIPE RIS Live 路由流…</td></tr></tbody>
+            <tbody id="asn-body"><tr class="empty-row"><td colspan="6">正在获取最近路由更新…</td></tr></tbody>
           </table>
         </div>
-        <p class="tool-note">数据来自 RIPE NCC RIS Live 公共 BGP 流；国家与名称按源 ASN 异步补全并缓存。路由更新频率极高，列表仅保留最近 60 条。</p>
+        <p class="tool-note">数据来自 RIPE NCC RIS Live 公共 BGP 流；国家与名称按源 ASN 异步补全并缓存。默认静态展示最近 100 条变更，点击「开启实时」后每 3 秒安静增量刷新。</p>
       </div>
     </div>
   </section>

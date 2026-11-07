@@ -226,54 +226,75 @@ async function query(ip, scroll) {
 
 /* ================= ASN monitor ================= */
 const asn = {
-  ws: null, started: false, paused: false, count: 0, stopped: false,
-  cache: new Map(), pending: new Map(), queue: [], active: 0, buffer: [], flushTimer: null,
-  start() { if (this.started) return; this.started = true; this.stopped = false; this.flushTimer = setInterval(() => this.flush(), 600); this.connect(); },
+  ws: null, started: false, paused: false, stopped: false, initialDone: false,
+  rows: [], cache: new Map(), pending: new Map(), queue: [], active: 0,
+  collectTimer: null, renderTimer: null,
+  start() {
+    if (this.started) return;
+    this.started = true; this.stopped = false; this.initialDone = false; this.rows = [];
+    $("asn-body").innerHTML = '<tr class="empty-row"><td colspan="6">正在获取最近路由更新…</td></tr>';
+    $("asn-count").textContent = "0"; $("asn-pause").textContent = "开启实时";
+    this.setConn("", "获取中…");
+    this.connect();
+    this.collectTimer = setTimeout(() => this.finishInitial(), 2500);
+  },
   setConn(cls, text) { const el = $("asn-conn"); el.className = `conn-state ${cls}`; $("asn-conn-text").textContent = text; },
   connect() {
-    this.setConn("", "连接中…");
-    let ws; try { ws = new WebSocket("wss://ris-live.ripe.net/v1/ws/?client=iplens"); } catch { this.setConn("error", "浏览器不支持 WebSocket"); return; }
+    let ws; try { ws = new WebSocket("wss://ris-live.ripe.net/v1/ws/?client=iplens"); } catch { this.setConn("error", "浏览器不支持 WebSocket"); this.finishInitial(); return; }
     this.ws = ws;
-    ws.onopen = () => { ws.send(JSON.stringify({ type: "ris_subscribe", data: { type: "UPDATE" } })); this.setConn(this.paused ? "paused" : "live", this.paused ? "已暂停" : "实时连接"); };
-    ws.onmessage = (e) => { if (this.paused) return; let msg; try { msg = JSON.parse(e.data); } catch { return; } this.handle(msg); };
+    ws.onopen = () => { ws.send(JSON.stringify({ type: "ris_subscribe", data: { type: "UPDATE" } })); };
+    ws.onmessage = (e) => { let msg; try { msg = JSON.parse(e.data); } catch { return; } this.handle(msg); };
     ws.onclose = () => { if (this.started && !this.stopped) { this.setConn("error", "连接断开，3 秒后重连…"); setTimeout(() => { if (!this.stopped) this.connect(); }, 3000); } };
     ws.onerror = () => { this.setConn("error", "连接错误"); };
   },
   handle(msg) {
+    if (this.initialDone && this.paused) return;
     if (msg.type !== "ris_message") return; const d = msg.data; if (!d || d.type !== "UPDATE") return;
     const path = d.path || []; const origin = path.length ? path[path.length - 1] : null; const ts = (d.timestamp || Date.now() / 1000) * 1000;
-    for (const ann of d.announcements || []) for (const pfx of ann.prefixes || []) this.addRow(ts, pfx, origin, "announce");
-    for (const pfx of d.withdrawals || []) this.addRow(ts, pfx, null, "withdraw");
+    for (const ann of d.announcements || []) for (const pfx of ann.prefixes || []) this.pushRow(ts, pfx, origin, "announce");
+    for (const pfx of d.withdrawals || []) this.pushRow(ts, pfx, null, "withdraw");
+    if (!this.initialDone && this.rows.length >= 100) this.finishInitial();
   },
-  addRow(ts, pfx, origin, type) {
-    this.count++; $("asn-count").textContent = String(this.count);
-    this.buffer.push({ ts, pfx, origin, type });
-    if (this.buffer.length > 200) this.buffer.splice(0, this.buffer.length - 200);
+  pushRow(ts, pfx, origin, type) {
+    this.rows.push({ ts, pfx, origin, type });
+    if (this.rows.length > 100) this.rows.splice(0, this.rows.length - 100);
+    if (this.initialDone && !this.paused) this.scheduleRender();
   },
-  flush() {
-    if (this.paused || !this.buffer.length) return;
-    const batch = this.buffer.slice(-2); this.buffer.length = 0;
-    const body = $("asn-body"); const empty = body.querySelector(".empty-row"); if (empty) empty.remove();
-    for (let i = batch.length - 1; i >= 0; i--) {
-      const { ts, pfx, origin, type } = batch[i];
-      const tr = document.createElement("tr"); tr.className = "row-new";
-      const time = new Date(ts).toLocaleTimeString("zh-CN", { hour12: false });
-      tr.innerHTML = `<td>${time}</td><td class="country-cell">—</td><td class="mono"></td><td class="mono asn-cell"></td><td class="name-cell">—</td><td><span class="tag ${type}">${type === "announce" ? "公告" : "撤销"}</span></td>`;
-      tr.children[2].textContent = pfx; tr.children[3].textContent = origin ? `AS${origin}` : "—";
-      body.prepend(tr);
-      if (origin) this.enrich(origin, pfx, tr);
+  finishInitial() {
+    if (this.initialDone) return; this.initialDone = true;
+    clearTimeout(this.collectTimer);
+    this.paused = true;
+    $("asn-pause").textContent = "开启实时";
+    this.render();
+    this.setConn("paused", this.rows.length ? "静态快照 · 已暂停" : "暂无数据");
+  },
+  scheduleRender() {
+    if (this.renderTimer) return;
+    this.renderTimer = setTimeout(() => { this.renderTimer = null; this.render(); }, 3000);
+  },
+  render() {
+    const body = $("asn-body"); body.textContent = "";
+    const sorted = [...this.rows].sort((a, b) => b.ts - a.ts);
+    $("asn-count").textContent = String(sorted.length);
+    if (!sorted.length) { body.innerHTML = '<tr class="empty-row"><td colspan="6">暂无路由更新，可开启实时或稍后重试</td></tr>'; return; }
+    for (const r of sorted) {
+      const tr = document.createElement("tr");
+      const time = new Date(r.ts).toLocaleTimeString("zh-CN", { hour12: false });
+      tr.innerHTML = `<td>${time}</td><td class="country-cell">—</td><td class="mono"></td><td class="mono asn-cell"></td><td class="name-cell">—</td><td><span class="tag ${r.type}">${r.type === "announce" ? "公告" : "撤销"}</span></td>`;
+      tr.children[2].textContent = r.pfx; tr.children[3].textContent = r.origin ? `AS${r.origin}` : "—";
+      body.appendChild(tr);
+      if (r.origin) this.enrich(r.origin, r.pfx, tr);
     }
-    while (body.children.length > 60) body.lastChild.remove();
   },
   enrich(asnNum, pfx, tr) {
     if (this.cache.has(asnNum)) { this.fill(tr, this.cache.get(asnNum)); return; }
     if (this.pending.has(asnNum)) { this.pending.get(asnNum).push({ tr, pfx }); return; }
     this.pending.set(asnNum, [{ tr, pfx }]);
-    if (this.queue.length > 50) { const old = this.queue.shift(); this.pending.delete(old); }
+    if (this.queue.length > 60) { const old = this.queue.shift(); this.pending.delete(old); }
     this.queue.push(asnNum); this.pump();
   },
   pump() {
-    while (this.active < 3 && this.queue.length) {
+    while (this.active < 4 && this.queue.length) {
       const asnNum = this.queue.shift(); this.active++;
       const jobs = this.pending.get(asnNum) || []; const pfx = jobs[0] ? jobs[0].pfx : "";
       fetchTimeout(`${API}?asn=${asnNum}&pfx=${encodeURIComponent(pfx)}`, 12000).then((r) => r.json()).then((d) => {
@@ -286,8 +307,14 @@ const asn = {
     tr.children[1].innerHTML = cc ? `<span class="flag-cell">${flagImg(cc)}${name}</span>` : (name || "—");
     tr.children[4].textContent = d.name || "—"; tr.children[4].title = d.name || "";
   },
-  togglePause() { this.paused = !this.paused; $("asn-pause").textContent = this.paused ? "继续" : "暂停"; if (this.ws && this.ws.readyState === 1) this.setConn(this.paused ? "paused" : "live", this.paused ? "已暂停" : "实时连接"); },
-  clear() { this.count = 0; this.buffer.length = 0; $("asn-count").textContent = "0"; $("asn-body").innerHTML = '<tr class="empty-row"><td colspan="6">列表已清空，等待新的路由更新…</td></tr>'; },
+  togglePause() {
+    if (!this.initialDone) return;
+    this.paused = !this.paused;
+    $("asn-pause").textContent = this.paused ? "开启实时" : "暂停";
+    this.setConn(this.paused ? "paused" : "live", this.paused ? "静态快照 · 已暂停" : "实时连接");
+    if (!this.paused) { this.render(); this.scheduleRender(); }
+  },
+  clear() { this.rows = []; this.render(); },
 };
 
 /* ================= DNS leak ================= */
