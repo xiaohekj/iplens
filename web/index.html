@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IPLens · IP 检测雷达 — 家宽判定 / 欺诈值 / DNS 泄露 / WebRTC / ASN 监控</title>
+  <meta name="description" content="一站式 IP 与网络隐私检测：家宽判定、欺诈值与信任评分、代理/VPN/Tor 识别、DNS 泄露检测、WebRTC 泄露检测、IPv4/IPv6 出口检测与实时 ASN 变化监控。" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%2322d3ee' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%238b5cf6' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='%2322d3ee'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+  <div class="aurora" aria-hidden="true"></div>
+  <div class="grain" aria-hidden="true"></div>
+
+  <nav class="nav" id="nav">
+    <a class="nav-brand" href="#ip" data-route="query" aria-label="IPLens 首页">
+      <svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <circle cx="16" cy="16" r="13" stroke="url(#lg1)" stroke-width="1.6"/>
+        <circle cx="16" cy="16" r="7.5" stroke="url(#lg1)" stroke-width="1.2" opacity=".6"/>
+        <path d="M16 16 L26 8" stroke="#22d3ee" stroke-width="1.6" stroke-linecap="round"/>
+        <circle cx="16" cy="16" r="2.4" fill="#22d3ee"/>
+        <circle cx="23" cy="20" r="1.6" fill="#8b5cf6"/>
+        <defs><linearGradient id="lg1" x1="0" y1="0" x2="32" y2="32"><stop stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>
+      </svg>
+      <span class="brand-name">IPLens<em>IP 检测雷达</em></span>
+    </a>
+    <div class="nav-links">
+      <a href="#ip" data-route="query" data-nav>IP 查询</a>
+      <a href="#asn" data-route="asn" data-nav>ASN 变化监控<i class="nav-live" aria-hidden="true"></i></a>
+      <a href="#dns" data-route="dns" data-nav>DNS 泄露</a>
+      <a href="#webrtc" data-route="webrtc" data-nav>WebRTC</a>
+      <a href="#api" data-route="api" data-nav>开放 API</a>
+    </div>
+  </nav>
+
+  <!-- ============ VIEW: IP QUERY ============ -->
+  <section class="view" id="view-query" data-view="query">
+    <header class="hero" id="top">
+      <div class="radar-bg" aria-hidden="true">
+        <svg viewBox="0 0 600 600" preserveAspectRatio="xMidYMid slice">
+          <defs>
+            <radialGradient id="rg" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#22d3ee" stop-opacity=".10"/>
+              <stop offset="60%" stop-color="#8b5cf6" stop-opacity=".05"/>
+              <stop offset="100%" stop-color="#000" stop-opacity="0"/>
+            </radialGradient>
+            <linearGradient id="sweep" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#22d3ee" stop-opacity="0"/>
+              <stop offset="100%" stop-color="#22d3ee" stop-opacity=".35"/>
+            </linearGradient>
+          </defs>
+          <circle cx="300" cy="300" r="290" fill="url(#rg)"/>
+          <g stroke="#3b82f6" stroke-opacity=".14" fill="none">
+            <circle cx="300" cy="300" r="70"/><circle cx="300" cy="300" r="130"/>
+            <circle cx="300" cy="300" r="190"/><circle cx="300" cy="300" r="250"/>
+            <path d="M300 10v580M10 300h580M95 95l410 410M505 95L95 505"/>
+          </g>
+          <g class="radar-sweep"><path d="M300 300 L300 20 A280 280 0 0 1 440 60 Z" fill="url(#sweep)"/></g>
+          <circle class="blip b1" cx="385" cy="180" r="3.5" fill="#22d3ee"/>
+          <circle class="blip b2" cx="200" cy="390" r="3" fill="#8b5cf6"/>
+          <circle class="blip b3" cx="430" cy="330" r="2.5" fill="#34d399"/>
+        </svg>
+      </div>
+      <div class="hero-inner">
+        <p class="eyebrow reveal">IP INTELLIGENCE · 实时威胁情报</p>
+        <h1 class="reveal d1">看清每一个 IP<br /><span class="grad-text">背后的真实身份</span></h1>
+        <p class="hero-sub reveal d2">家宽判定 · 欺诈值 · 信任评分 · 代理 / VPN / Tor 识别 · 地理位置与 ASN 情报</p>
+        <form class="search reveal d3" id="search-form" autocomplete="off">
+          <div class="search-box">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="search-input" type="text" placeholder="正在识别本机 IP…" aria-label="IP 地址" spellcheck="false" />
+            <button class="btn btn-primary" id="search-btn" type="submit">检测</button>
+          </div>
+          <div class="search-meta">
+            <button class="chip chip-action" id="detect-me" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+              重新识别本机 IP
+            </button>
+            <button class="chip" type="button" data-example="8.8.8.8">8.8.8.8</button>
+            <button class="chip" type="button" data-example="1.1.1.1">1.1.1.1</button>
+            <div class="history" id="history" aria-label="最近查询"></div>
+          </div>
+        </form>
+      </div>
+    </header>
+
+    <div class="container">
+      <div class="result-wrap" id="result">
+        <div class="loading-panel" id="loading" hidden>
+          <div class="radar-loader" aria-hidden="true"><span></span><span></span><span></span><i></i></div>
+          <p class="loading-text">正在扫描 IP 情报<span class="dots"><i>.</i><i>.</i><i>.</i></span></p>
+          <p class="loading-sub">聚合威胁情报、网络类型与地理位置数据</p>
+        </div>
+        <div class="error-panel" id="error" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          <p id="error-msg">检测失败</p>
+          <button class="btn btn-ghost" id="error-retry" type="button">重试</button>
+        </div>
+
+        <div id="report" hidden>
+          <div class="identity card reveal">
+            <div class="identity-main">
+              <span class="flag" id="r-flag" aria-hidden="true">🌐</span>
+              <div class="identity-text">
+                <div class="identity-ip-row">
+                  <h2 class="identity-ip" id="r-ip">—</h2>
+                  <button class="icon-btn" id="copy-ip" type="button" aria-label="复制 IP 地址" title="复制 IP"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+                  <button class="icon-btn" id="share-link" type="button" aria-label="复制查询链接" title="复制查询链接"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.6 6.8-4.2M8.6 13.4l6.8 4.2"/></svg></button>
+                </div>
+                <p class="identity-sub"><span id="r-geo">—</span> · <span id="r-isp">—</span></p>
+              </div>
+            </div>
+            <div class="identity-badges">
+              <span class="badge badge-version" id="r-version">IPv4</span>
+              <span class="badge" id="r-type">—</span>
+              <span class="badge" id="r-risk">—</span>
+            </div>
+          </div>
+
+          <div class="grid">
+            <div class="card score-card reveal" id="score-card">
+              <h3 class="card-title">综合评估</h3>
+              <div class="gauge-wrap">
+                <svg class="gauge" viewBox="0 0 200 200" aria-hidden="true">
+                  <defs><linearGradient id="gaugeGrad" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stop-color="#22d3ee"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs>
+                  <circle class="gauge-track" cx="100" cy="100" r="84"/>
+                  <circle class="gauge-fill" id="gauge-fill" cx="100" cy="100" r="84"/>
+                </svg>
+                <div class="gauge-center"><span class="gauge-num" id="r-trust">0</span><span class="gauge-label">信任评分</span></div>
+              </div>
+              <div class="fraud-block">
+                <div class="fraud-head">
+                  <span class="fraud-title">欺诈值</span>
+                  <span class="fraud-value"><b id="r-fraud">0</b><i>%</i><em class="fraud-level" id="r-fraud-level">极低风险</em></span>
+                </div>
+                <div class="fraud-rainbow">
+                  <div class="fraud-rainbow-track"></div>
+                  <div class="fraud-marker" id="fraud-marker"><span class="fraud-marker-tip" id="fraud-marker-tip">0%</span></div>
+                </div>
+                <div class="fraud-ticks"><span>0</span><span>10</span><span>21</span><span>40</span><span>66</span><span>80</span><span>100</span></div>
+              </div>
+              <p class="score-note" id="r-verdict">—</p>
+            </div>
+
+            <div class="card signals-card reveal d1" id="signals-section">
+              <h3 class="card-title">风险信号 <span class="title-hint" id="signals-count">6 项检测</span></h3>
+              <div class="signals-grid" id="signals-grid"></div>
+            </div>
+
+            <div class="card location-card reveal d2">
+              <h3 class="card-title">地理位置</h3>
+              <div class="map-wrap">
+                <div id="map"></div>
+                <a id="map-open" class="map-open" href="#" target="_blank" rel="noopener noreferrer" hidden>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h6v6M20 4L10 14"/><path d="M20 14v5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19V6a1.5 1.5 0 0 1 1.5-1.5H10"/></svg>
+                  在地图中打开
+                </a>
+                <div class="map-fallback" id="map-fallback" hidden>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 4 5.7 4 9s-1.5 6.4-4 9c-2.5-2.6-4-5.7-4-9s1.5-6.4 4-9z"/></svg>
+                  <p id="map-fallback-text">坐标 —</p>
+                </div>
+              </div>
+              <dl class="kv">
+                <div><dt>国家 / 地区</dt><dd id="r-country">—</dd></div>
+                <div><dt>省份 / 州</dt><dd id="r-region">—</dd></div>
+                <div><dt>城市</dt><dd id="r-city">—</dd></div>
+                <div><dt>经纬度</dt><dd id="r-coords">—</dd></div>
+                <div><dt>时区</dt><dd id="r-tz">—</dd></div>
+              </dl>
+            </div>
+
+            <div class="card network-card reveal d3">
+              <h3 class="card-title">网络与家宽判定</h3>
+              <div class="type-verdict" id="type-verdict">
+                <div class="type-icon" id="type-icon"></div>
+                <div><strong id="type-label">—</strong><p id="type-desc">—</p></div>
+              </div>
+              <dl class="kv">
+                <div><dt>ASN</dt><dd id="r-asn">—</dd></div>
+                <div><dt>组织</dt><dd id="r-org">—</dd></div>
+                <div><dt>运营商 ISP</dt><dd id="r-isp2">—</dd></div>
+                <div><dt>邮政编码</dt><dd id="r-zip">—</dd></div>
+                <div><dt>数据源</dt><dd id="r-source">—</dd></div>
+                <div><dt>评估时间</dt><dd id="r-time">—</dd></div>
+              </dl>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="exit-section" id="exit-section">
+        <div class="exit-section-head">
+          <h3 class="card-title inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 17L17 7M17 7H9M17 7v8"/><path d="M3 12a9 9 0 0 0 9 9 9 9 0 0 0 6.7-3M21 12a9 9 0 0 0-9-9 9 9 0 0 0-6.7 3"/></svg>本机网络出口</h3>
+          <span class="title-hint">你当前网络的 IPv4 / IPv6 公网出口，与上方查询目标无关</span>
+          <button class="btn btn-ghost btn-sm" id="exit-run" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7M21 3v6h-6"/></svg>重新检测</button>
+        </div>
+        <div class="exit-grid">
+          <div class="card exit-card" id="exit-v4">
+            <div class="exit-top"><span class="exit-proto">IPv4 出口</span><span class="badge" id="exit-v4-state">检测中</span></div>
+            <div class="exit-ip" id="exit-v4-ip">—</div>
+            <div class="exit-meta"><span id="exit-v4-geo">—</span><button class="icon-btn" id="exit-v4-copy" type="button" aria-label="复制 IPv4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button></div>
+          </div>
+          <div class="card exit-card v6" id="exit-v6">
+            <div class="exit-top"><span class="exit-proto">IPv6 出口</span><span class="badge" id="exit-v6-state">检测中</span></div>
+            <div class="exit-ip" id="exit-v6-ip">—</div>
+            <div class="exit-meta"><span id="exit-v6-geo">—</span><button class="icon-btn" id="exit-v6-copy" type="button" aria-label="复制 IPv6"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button></div>
+          </div>
+        </div>
+        <p class="exit-summary" id="exit-summary">正在探测双栈出口…</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ VIEW: ASN MONITOR ============ -->
+  <section class="view" id="view-asn" data-view="asn" hidden>
+    <div class="container">
+      <div class="view-head">
+        <p class="eyebrow">BGP ROUTING · LIVE FEED</p>
+        <h1>ASN <span class="grad-text">变化监控</span></h1>
+        <p class="view-sub">订阅 RIPE RIS Live 全球 BGP 路由更新流，实时呈现前缀公告与路由变更的源 ASN 归属。</p>
+      </div>
+      <div class="card tool-card">
+        <div class="tool-bar">
+          <div class="conn-state" id="asn-conn"><i class="conn-dot"></i><span id="asn-conn-text">未连接</span></div>
+          <div class="tool-bar-right">
+            <span class="asn-count">已捕获 <b id="asn-count">0</b> 条更新</span>
+            <button class="btn btn-ghost btn-sm" id="asn-pause" type="button">暂停</button>
+            <button class="btn btn-ghost btn-sm" id="asn-clear" type="button">清空</button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table" id="asn-table">
+            <thead><tr><th>变更时间</th><th>国家</th><th>CIDR</th><th>新 ASN</th><th>名称</th><th>类型</th></tr></thead>
+            <tbody id="asn-body"><tr class="empty-row"><td colspan="6">正在连接 RIPE RIS Live 路由流…</td></tr></tbody>
+          </table>
+        </div>
+        <p class="tool-note">数据来自 RIPE NCC RIS Live 公共 BGP 流；国家与名称按源 ASN 异步补全并缓存。路由更新频率极高，列表仅保留最近 60 条。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ VIEW: DNS LEAK ============ -->
+  <section class="view" id="view-dns" data-view="dns" hidden>
+    <div class="container">
+      <div class="view-head">
+        <p class="eyebrow">DNS LEAK TEST</p>
+        <h1>DNS <span class="grad-text">泄露检测</span></h1>
+        <p class="view-sub">检测你的 DNS 解析请求实际由哪些递归服务器完成。使用代理 / VPN 时，若解析仍由本地运营商完成，会暴露你的真实位置。</p>
+        <p class="view-sub dim">原理：多次请求 edns.ip-api.com 检测端点，每次跳转至全新随机子域，其权威 DNS 记录解析该子域的递归服务器并随响应回传（基于 EDNS Client Subnet）。</p>
+      </div>
+      <div class="card tool-card">
+        <div class="tool-bar">
+          <h3 class="card-title inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>递归解析服务器探测</h3>
+          <button class="btn btn-primary btn-sm" id="dns-run" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3l14 9-14 9z"/></svg>重新检测</button>
+        </div>
+        <div class="verdict-banner" id="dns-verdict" hidden><span class="verdict-icon" id="dns-verdict-icon"></span><div><strong id="dns-verdict-title"></strong><p id="dns-verdict-desc"></p></div></div>
+        <div class="loading-inline" id="dns-loading" hidden><div class="radar-loader sm" aria-hidden="true"><span></span><span></span><span></span><i></i></div><p>正在发起随机子域解析探测…</p></div>
+        <div class="table-scroll">
+          <table class="data-table" id="dns-table">
+            <thead><tr><th class="num">#</th><th>解析服务器</th><th>归属地</th><th class="num">命中次数</th></tr></thead>
+            <tbody id="dns-body"><tr class="empty-row"><td colspan="4">点击「重新检测」开始 DNS 泄露探测</td></tr></tbody>
+          </table>
+        </div>
+        <p class="tool-note" id="dns-summary">共发起 0 次查询。运营商 DNS 常以集群方式应答，多台属正常现象；结果基于 EDNS 技术推断，受运营商策略影响，仅供参考。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ VIEW: WEBRTC ============ -->
+  <section class="view" id="view-webrtc" data-view="webrtc" hidden>
+    <div class="container">
+      <div class="view-head">
+        <p class="eyebrow">WEBRTC LEAK TEST</p>
+        <h1>WebRTC <span class="grad-text">泄露检测</span></h1>
+        <p class="view-sub">浏览器的 WebRTC 会为建立点对点连接向 STUN 服务器请求地址映射，这一过程可能绕过 HTTP 代理，直接暴露你的真实 IP。</p>
+      </div>
+      <div class="card tool-card">
+        <div class="tool-bar">
+          <h3 class="card-title inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18M3 12h18"/></svg>检测结果 <span class="http-exit">HTTP 出口：<b id="rtc-http-ip">识别中…</b></span></h3>
+          <button class="btn btn-primary btn-sm" id="rtc-run" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7M21 3v6h-6"/></svg>重新检测</button>
+        </div>
+        <div class="verdict-banner" id="rtc-verdict" hidden><span class="verdict-icon" id="rtc-verdict-icon"></span><div><strong id="rtc-verdict-title"></strong><p id="rtc-verdict-desc"></p></div></div>
+        <div class="loading-inline" id="rtc-loading" hidden><div class="radar-loader sm" aria-hidden="true"><span></span><span></span><span></span><i></i></div><p>正在通过 STUN 服务器收集 ICE 候选地址…</p></div>
+      </div>
+      <div class="card tool-card">
+        <div class="tool-bar"><h3 class="card-title inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></svg>STUN 服务器</h3><span class="title-hint" id="rtc-progress">待检测</span></div>
+        <div class="stun-list" id="stun-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ VIEW: API ============ -->
+  <section class="view" id="view-api" data-view="api" hidden>
+    <div class="container">
+      <div class="view-head">
+        <p class="eyebrow">API REFERENCE</p>
+        <h1>开放 <span class="grad-text">API</span></h1>
+        <p class="view-sub">同源 IP 情报接口：一个返回请求方自身 IP 信息，另一个按指定 IP 查询。响应为完整格式化 JSON，无需鉴权。</p>
+      </div>
+      <div class="card tool-card">
+        <div class="tool-bar"><h3 class="card-title inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13 5l-2 14"/></svg>快速示例</h3></div>
+        <div class="api-example"><span class="api-label">① 本机 IP（未加 /IP）</span><button class="icon-btn api-copy" type="button" data-copy="self" aria-label="复制"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button><code id="api-ex-self">curl …</code></div>
+        <div class="api-example"><span class="api-label">② 查询任意 IP</span><button class="icon-btn api-copy" type="button" data-copy="ip" aria-label="复制"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button><code id="api-ex-ip">curl …</code></div>
+        <div class="api-example"><span class="api-label">③ ASN 归属补全</span><button class="icon-btn api-copy" type="button" data-copy="asn" aria-label="复制"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button><code id="api-ex-asn">curl …</code></div>
+      </div>
+      <div class="card tool-card">
+        <div class="tool-bar"><h3 class="card-title inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3l14 9-14 9z"/></svg>在线调试</h3></div>
+        <form class="api-try" id="api-try-form"><input id="api-try-input" type="text" placeholder="输入 IP，如 1.1.1.1（留空查询本机）" aria-label="调试 IP" /><button class="btn btn-primary btn-sm" type="submit">发送请求</button></form>
+        <pre class="api-response" id="api-response" hidden></pre>
+      </div>
+      <div class="card tool-card">
+        <div class="tool-bar"><h3 class="card-title inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>返回字段说明</h3></div>
+        <dl class="api-fields">
+          <div><dt>ip / version</dt><dd>归属 IP 地址与协议版本（4 / 6）</dd></div>
+          <div><dt>type</dt><dd>网络类型：residential 家宽 / datacenter 数据中心 / mobile 移动 / business 企业，含置信度</dd></div>
+          <div><dt>scores</dt><dd>trust 信任评分、fraud 欺诈值（0–100）、riskLevel 风险等级</dd></div>
+          <div><dt>signals</dt><dd>代理 / VPN / Tor / 数据中心 / 移动 / 滥用威胁六项信号，ipquery 与 ip-api 双源交叉验证</dd></div>
+          <div><dt>location</dt><dd>国家、地区、城市、邮政编码、经纬度、时区（邮编缺失时由 ipwho.is 真实数据补全）</dd></div>
+          <div><dt>network</dt><dd>ASN、组织、运营商 ISP</dd></div>
+        </dl>
+      </div>
+      <div class="card tool-card">
+        <div class="tool-bar"><h3 class="card-title inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>请求限制</h3></div>
+        <p class="tool-note block">结果在服务端缓存 15 分钟（ASN 归属缓存 1 小时），同一 IP 在缓存期内评分保持一致。仅支持 GET；内网、保留地址与无效输入返回 400，非 GET 方法返回 405。上游不可用时返回 502。</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <p>IPLens · IP 检测雷达 — 数据仅供网络诊断与安全参考</p>
+    <p class="footer-sub">Powered by ipquery.io · ip-api.com · ipwho.is · RIPE RIS Live · Esri</p>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

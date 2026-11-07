@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Local test artifacts (screenshots, CDP scripts, browser profiles, API dumps)
+.shots/
+
+# Wrangler / Cloudflare local cache and build output
+.wrangler/
+.wrangler-build/
+dist/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+
+# Qoder Sites generated descriptor and local session files
+*.qoder.site
