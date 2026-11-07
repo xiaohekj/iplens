@@ -198,17 +198,20 @@ async function ownReport() { if (!state.own) state.own = await detectOwnIp(); re
 async function query(ip, scroll) {
   const seq = ++state.reqSeq; state.queryStarted = true;
   if (state.controller) state.controller.abort(); state.controller = new AbortController(); state.lastQuery = ip || null;
-  let showedCache = false;
+  let showedCache = false; let cachedOwn = null;
   if (ip) { $("search-input").value = ip; setLoading(true); }
   else {
-    const cached = readOwnCache();
-    if (cached) { showedCache = true; state.own = cached; $("error").hidden = true; render(cached); }
+    cachedOwn = readOwnCache();
+    if (cachedOwn) { showedCache = true; state.own = cachedOwn; $("error").hidden = true; render(cachedOwn); }
     else setLoading(true);
   }
   try {
     const report = ip ? await fetchReport(ip) : await detectOwnIp();
     if (seq !== state.reqSeq) return;
-    if (!ip) { state.own = report; writeOwnCache(report); }
+    if (!ip) {
+      if (!report.location.zip && cachedOwn && cachedOwn.location && cachedOwn.location.zip) report.location.zip = cachedOwn.location.zip;
+      state.own = report; writeOwnCache(report); exit.prefill(report);
+    }
     setLoading(false); render(report); pushHistory(report.ip);
     try {
       if (ip) history.replaceState(null, "", `#ip=${report.ip}`);
@@ -432,12 +435,26 @@ const rtc = {
 
 /* ================= Exit detection ================= */
 const exit = {
-  started: false, running: false,
+  started: false, running: false, _own: null,
   V4: [["https://ipv4.icanhazip.com", true], ["https://v4.ident.me", true], ["https://api.ipify.org?format=json", false]],
   V6: [["https://ipv6.icanhazip.com", true], ["https://v6.ident.me", true], ["https://api6.ipify.org?format=json", false]],
   async probe(list, wantV6) {
-    for (const [url, text] of list) { try { const res = await fetchTimeout(url, 7000); let ip = text ? (await res.text()).trim() : (await res.json()).ip; ip = (ip || "").trim(); if (!ip || !isIpFormat(ip)) continue; const isV6 = ip.includes(":"); if (wantV6 !== isV6) continue; if (isPrivateIp(ip)) continue; return ip; } catch {} }
-    return null;
+    const attempt = async ([url, text]) => {
+      const res = await fetchTimeout(url, 4000);
+      let ip = text ? (await res.text()).trim() : ((await res.json()).ip || "").trim();
+      if (!ip || !isIpFormat(ip)) throw new Error("invalid");
+      if (wantV6 !== ip.includes(":")) throw new Error("family");
+      if (isPrivateIp(ip)) throw new Error("private");
+      return ip;
+    };
+    try { return await Promise.any(list.map(attempt)); } catch { return null; }
+  },
+  prefill(report) {
+    if (!report || !report.ip) return;
+    const fam = report.version === 6 ? "v6" : "v4";
+    const geo = [report.location.city, report.location.country].filter(Boolean).join(", ");
+    this._own = { fam, ip: report.ip, geo };
+    this.setCard(fam, report.ip, geo);
   },
   async geo(ip) { try { const r = await (await fetchTimeout(`${API}?q=${encodeURIComponent(ip)}`, 12000)).json(); if (r.ok) return [r.location.city, r.location.country].filter(Boolean).join(", ") || r.location.country || ""; } catch {} return ""; },
   setCard(fam, ip, geo) {
@@ -447,17 +464,24 @@ const exit = {
   },
   async run() {
     if (this.running) return; this.running = true; this.started = true; $("exit-run").disabled = true;
-    $("exit-v4-state").textContent = "检测中"; $("exit-v4-state").className = "badge"; $("exit-v6-state").textContent = "检测中"; $("exit-v6-state").className = "badge";
-    $("exit-v4-ip").textContent = "…"; $("exit-v6-ip").textContent = "…"; $("exit-summary").textContent = "正在探测双栈出口…";
-    const [v4, v6] = await Promise.all([this.probe(this.V4, false), this.probe(this.V6, true)]);
-    const [g4, g6] = await Promise.all([v4 ? this.geo(v4) : "", v6 ? this.geo(v6) : ""]);
-    this.setCard("v4", v4, g4); this.setCard("v6", v6, g6);
+    const own = this._own;
+    if (own) this.setCard(own.fam, own.ip, own.geo);
+    $("exit-summary").textContent = "正在探测双栈出口…";
+    const [p4, p6] = await Promise.all([this.probe(this.V4, false), this.probe(this.V6, true)]);
+    const v4 = p4 || (own && own.fam === "v4" ? own.ip : null);
+    const v6 = p6 || (own && own.fam === "v6" ? own.ip : null);
+    this.setCard("v4", v4, own && own.fam === "v4" ? own.geo : "");
+    this.setCard("v6", v6, own && own.fam === "v6" ? own.geo : "");
     let s;
     if (v4 && v6) s = `你的网络为 <b>双栈网络</b>：IPv4 出口 <b>${v4}</b>，IPv6 出口 <b>${v6}</b>。两种协议均可独立访问互联网。`;
     else if (v4) s = `你的网络 <b>仅 IPv4 可用</b>，出口为 <b>${v4}</b>；未检测到 IPv6 出口，访问纯 IPv6 资源可能受限。`;
     else if (v6) s = `你的网络 <b>仅 IPv6 可用</b>，出口为 <b>${v6}</b>；未检测到 IPv4 出口，访问纯 IPv4 资源可能依赖 NAT64/DNS64 转换。`;
     else s = "未能检测到任何公网出口，可能处于受限网络或检测端点被拦截，请稍后重试。";
-    $("exit-summary").innerHTML = s; $("exit-run").disabled = false; this.running = false;
+    $("exit-summary").innerHTML = s;
+    const [g4, g6] = await Promise.all([v4 ? this.geo(v4) : "", v6 ? this.geo(v6) : ""]);
+    this.setCard("v4", v4, g4 || (own && own.fam === "v4" ? own.geo : ""));
+    this.setCard("v6", v6, g6 || (own && own.fam === "v6" ? own.geo : ""));
+    $("exit-run").disabled = false; this.running = false;
   },
 };
 

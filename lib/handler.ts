@@ -267,15 +267,16 @@ function buildReport(ip: string, raw: any, sec: any): Report {
 
 async function fetchFresh(ip: string): Promise<Report> {
   const geoPromise = fetchJson(`https://ipwho.is/${encodeURIComponent(ip)}`, 3500).catch(() => null);
-  const secPromise = fetchJson(`http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,mobile,proxy,hosting`, 3500).catch(() => null);
+  const secPromise = fetchJson(`http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,mobile,proxy,hosting,zip`, 3500).catch(() => null);
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const raw = await fetchJson(`https://api.ipquery.io/${encodeURIComponent(ip)}`, 8000);
       if (raw && raw.ip && raw.location && raw.risk) {
         const [geo, sec] = await Promise.all([geoPromise, secPromise]);
         const report = buildReport(ip, raw, sec);
-        if (!report.location.zip && geo && geo.success === true && geo.postal) {
-          report.location.zip = String(geo.postal);
+        if (!report.location.zip) {
+          if (geo && geo.success === true && geo.postal) report.location.zip = String(geo.postal);
+          else if (sec && sec.status === "success" && sec.zip) report.location.zip = String(sec.zip);
         }
         return report;
       }
@@ -296,7 +297,8 @@ async function lookup(ip: string): Promise<Report> {
   const hit = cache.get(ip);
   if (hit && Date.now() - hit.at < CACHE_TTL) return hit.report;
   if (hit) {
-    fetchFresh(ip).then((r) => cacheReport(ip, r)).catch(() => {});
+    const prevZip = hit.report.location.zip;
+    fetchFresh(ip).then((r) => { if (!r.location.zip && prevZip) r.location.zip = prevZip; cacheReport(ip, r); }).catch(() => {});
     return hit.report;
   }
   const report = await fetchFresh(ip);
