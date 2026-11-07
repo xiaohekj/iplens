@@ -522,7 +522,6 @@ main { max-width: 1160px; margin: 0 auto; padding: 0 clamp(16px, 3vw, 32px); }
 .view-head { text-align: center; padding: calc(var(--nav-h) + clamp(36px, 6vh, 64px)) 0 clamp(24px, 4vh, 40px); max-width: 760px; margin: 0 auto; }
 .view-head h1 { font-size: clamp(28px, 4.6vw, 44px); margin-bottom: 14px; }
 .view-sub { color: var(--muted); font-size: clamp(13px, 1.7vw, 15px); line-height: 1.8; }
-.view-sub.dim { color: var(--faint); font-size: 12.5px; margin-top: 10px; }
 .nav-live { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--green); margin-left: 6px; vertical-align: middle; box-shadow: 0 0 8px var(--green); animation: blip 2s ease-in-out infinite; }
 
 /* ---------- Tool cards & bars ---------- */

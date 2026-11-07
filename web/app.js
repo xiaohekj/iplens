@@ -360,7 +360,7 @@ const dns = {
     const N = 8; const map = new Map(); let done = 0;
     await Promise.all(Array.from({ length: N }, async () => {
       try { const res = await fetchTimeout("https://edns.ip-api.com/json", 12000, { cache: "no-store" }); const d = await res.json(); const ip = d && d.dns && d.dns.ip; const geo = (d && d.dns && d.dns.geo) || ""; if (ip) { const e = map.get(ip) || { ip, geo, count: 0 }; e.count++; if (geo) e.geo = geo; map.set(ip, e); } } catch {}
-      done++; $("dns-summary").textContent = `正在探测…已完成 ${done}/${N} 次随机子域查询。`;
+      done++; $("dns-summary").textContent = `正在探测…已完成 ${done}/${N} 次查询。`;
     }));
     const rows = [...map.values()].sort((a, b) => b.count - a.count);
     const body = $("dns-body"); body.textContent = "";
@@ -371,7 +371,7 @@ const dns = {
     if (!rows.length) { this.setVerdict("warn", "未获取到解析服务器", "本次探测未能捕获递归服务器地址，可能是网络拦截了检测端点，请稍后重试。"); }
     else if (!exitCountry) { this.setVerdict("warn", "已捕获解析服务器", `共 ${rows.length} 台递归服务器应答，但无法识别你的出口位置以进行泄露比对。`); }
     else { const foreign = [...countries].filter((c) => c.toLowerCase() !== exitCountry.toLowerCase()); if (!foreign.length) this.setVerdict("good", "未发现 DNS 泄露迹象", `所有解析请求均由 ${exitCountry} 境内的服务器完成，与你的出口位置一致。`); else this.setVerdict("bad", "发现 DNS 泄露迹象", `部分解析请求由 ${foreign.join("、")} 的服务器完成，与出口位置（${exitCountry}）不一致，可能暴露你的真实位置。`); }
-    $("dns-summary").textContent = `共发起 ${N} 次查询，捕获到 ${rows.length} 台不同服务器。运营商 DNS 常以集群方式应答，多台属正常现象；结果基于 EDNS 技术推断，受运营商策略影响，仅供参考。`;
+    $("dns-summary").textContent = `共发起 ${N} 次查询，捕获到 ${rows.length} 台不同服务器。`;
     $("dns-loading").hidden = true; $("dns-run").disabled = false; this.running = false;
   },
   setVerdict(tone, title, desc) { const b = $("dns-verdict"); b.className = `verdict-banner ${tone}`; $("dns-verdict-icon").innerHTML = tone === "good" ? CHECK_OK : CHECK_BAD; $("dns-verdict-title").textContent = title; $("dns-verdict-desc").textContent = desc; },
