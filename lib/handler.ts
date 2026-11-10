@@ -216,11 +216,22 @@ function buildReport(ip: string, raw: any, sec: any): Report {
     type = { code: "residential", label: "家庭宽带", residential: true, confidence: "medium" };
   }
 
-  let fraud = 0;
+  // Passive IP reputation cannot certify absolute safety: a clean address may
+  // still sit in a shared/CGNAT pool or be an unlisted compromised host. Trust
+  // starts below 100 and the uncertainty widens with weaker evidence, so clean
+  // residential IPs differentiate by confidence/corroboration instead of all
+  // scoring a perfect 100.
+  let fraud =
+    type.code === "datacenter" ? 16 :
+    type.code === "mobile" ? 9 :
+    type.code === "business" ? 11 :
+    type.confidence === "high" ? 8 : 15;
+  if (!hasThreatData) fraud += 4;
+  if (!secOk) fraud += 3;
   if (flags.tor) fraud += 45;
   if (flags.vpn) fraud += 28;
   if (flags.proxy) fraud += 28;
-  if (flags.datacenter) fraud += 25;
+  if (flags.datacenter) fraud += 22;
   if (flags.mobile) fraud += 4;
   if (flags.datacenter && (flags.proxy || flags.vpn || flags.tor)) fraud += 12;
   fraud += Math.min(100, threat) * 0.3;
