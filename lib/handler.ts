@@ -276,18 +276,73 @@ function buildReport(ip: string, raw: any, sec: any): Report {
   };
 }
 
+function consensusCode(codes: string[]): string {
+  const tally = new Map<string, number>();
+  for (const c of codes) if (c) tally.set(c, (tally.get(c) || 0) + 1);
+  let best = "";
+  let bestN = 0;
+  for (const c of codes) {
+    if (!c) continue;
+    const n = tally.get(c)!;
+    if (n > bestN) { best = c; bestN = n; }
+  }
+  return best;
+}
+
+function locationFromIpwho(g: any): Report["location"] {
+  return {
+    country: g.country ?? "",
+    countryCode: (g.country_code ?? "").toUpperCase(),
+    region: g.region ?? "",
+    city: g.city ?? "",
+    zip: g.postal ? String(g.postal) : "",
+    lat: typeof g.latitude === "number" ? g.latitude : null,
+    lon: typeof g.longitude === "number" ? g.longitude : null,
+    timezone: g.timezone?.id ?? "",
+    localtime: "",
+  };
+}
+
+function locationFromIpapi(s: any): Report["location"] {
+  return {
+    country: s.country ?? "",
+    countryCode: (s.countryCode ?? "").toUpperCase(),
+    region: s.regionName ?? "",
+    city: s.city ?? "",
+    zip: s.zip ? String(s.zip) : "",
+    lat: typeof s.lat === "number" ? s.lat : null,
+    lon: typeof s.lon === "number" ? s.lon : null,
+    timezone: s.timezone ?? "",
+    localtime: "",
+  };
+}
+
 async function fetchFresh(ip: string): Promise<Report> {
   const geoPromise = fetchJson(`https://ipwho.is/${encodeURIComponent(ip)}`, 3500).catch(() => null);
-  const secPromise = fetchJson(`http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,mobile,proxy,hosting,zip`, 3500).catch(() => null);
+  const secPromise = fetchJson(`http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,countryCode,regionName,city,lat,lon,timezone,zip,mobile,proxy,hosting`, 3500).catch(() => null);
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const raw = await fetchJson(`https://api.ipquery.io/${encodeURIComponent(ip)}`, 8000);
       if (raw && raw.ip && raw.location && raw.risk) {
         const [geo, sec] = await Promise.all([geoPromise, secPromise]);
         const report = buildReport(ip, raw, sec);
+        const geoOk = geo && geo.success === true;
+        const secOk = sec && sec.status === "success";
+        const geoCode = geoOk ? (geo.country_code ?? "").toUpperCase() : "";
+        const secCode = secOk ? (sec.countryCode ?? "").toUpperCase() : "";
+        // Geo-IP databases disagree for datacenter/anycast ranges. Pick the country
+        // backed by the most sources; on a tie prefer ipwho.is/ip-api over ipquery,
+        // which aligns with mainstream references and stays reachable when ip-api's
+        // HTTP endpoint is blocked.
+        const consensus = consensusCode([geoCode, secCode, report.location.countryCode]);
+        if (consensus && consensus !== report.location.countryCode) {
+          if (geoCode === consensus) report.location = locationFromIpwho(geo);
+          else if (secCode === consensus) report.location = locationFromIpapi(sec);
+        }
         if (!report.location.zip) {
-          if (geo && geo.success === true && geo.postal) report.location.zip = String(geo.postal);
-          else if (sec && sec.status === "success" && sec.zip) report.location.zip = String(sec.zip);
+          const finalCode = report.location.countryCode;
+          if (geoOk && geoCode === finalCode && geo.postal) report.location.zip = String(geo.postal);
+          else if (secOk && secCode === finalCode && sec.zip) report.location.zip = String(sec.zip);
         }
         return report;
       }
