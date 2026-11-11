@@ -3,18 +3,119 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>IPLens · IP 检测雷达 — 家宽判定 / 欺诈值 / DNS 泄露 / WebRTC / ASN 监控</title>
-  <meta name="description" content="一站式 IP 与网络隐私检测：家宽判定、欺诈值与信任评分、代理/VPN/Tor 识别、DNS 泄露检测、WebRTC 泄露检测、IPv4/IPv6 出口检测与实时 ASN 变化监控。" />
+  <title>IPLens · 免费 IP 检测雷达 — 家宽判定 / IP 欺诈值 / 信任评分 / DNS 泄露 / WebRTC / ASN 监控</title>
+  <meta name="description" content="免费在线 IP 检测工具：家宽判定、IP 欺诈值与信任评分、代理/VPN/Tor 识别、DNS 泄露检测、WebRTC 泄露检测、IPv4/IPv6 出口检测与实时 ASN 变化监控，打开即用，无需注册。" />
+  <meta name="keywords" content="IP检测,IP查询,家宽检测,家庭宽带判定,IP欺诈值,信任评分,代理检测,VPN检测,Tor检测,DNS泄露检测,WebRTC泄露,IPv6出口,ASN监控,BGP路由,IP地理位置,网络隐私" />
+  <meta name="author" content="IPLens" />
+  <meta name="theme-color" content="#05080f" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <link rel="canonical" href="https://iplens.imxiaohe.com/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="IPLens" />
+  <meta property="og:title" content="IPLens · 免费 IP 检测雷达 — 家宽判定 / 欺诈值 / DNS 泄露 / WebRTC / ASN 监控" />
+  <meta property="og:description" content="一站式 IP 与网络隐私检测：家宽判定、欺诈值与信任评分、代理/VPN/Tor 识别、DNS 泄露检测、WebRTC 泄露检测、IPv4/IPv6 出口检测与实时 ASN 变化监控。" />
+  <meta property="og:url" content="https://iplens.imxiaohe.com/" />
+  <meta property="og:image" content="https://iplens.imxiaohe.com/og-image.png" />
+  <meta property="og:image:width" content="1792" />
+  <meta property="og:image:height" content="1024" />
+  <meta property="og:image:alt" content="IPLens IP 检测雷达界面预览" />
+  <meta property="og:locale" content="zh_CN" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="IPLens · 免费 IP 检测雷达" />
+  <meta name="twitter:description" content="家宽判定、IP 欺诈值与信任评分、代理/VPN/Tor 识别、DNS 泄露、WebRTC 泄露、IPv4/IPv6 出口与实时 ASN 监控，打开即用。" />
+  <meta name="twitter:image" content="https://iplens.imxiaohe.com/og-image.png" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%2322d3ee' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%238b5cf6' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='%2322d3ee'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="preconnect" href="https://flagcdn.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="./styles.css" />
   <script defer src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
   <script defer src="./app.js"></script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebApplication",
+        "@id": "https://iplens.imxiaohe.com/#app",
+        "name": "IPLens",
+        "alternateName": "IP 检测雷达",
+        "url": "https://iplens.imxiaohe.com/",
+        "description": "免费在线 IP 检测工具：家宽判定、IP 欺诈值与信任评分、代理/VPN/Tor 识别、DNS 泄露检测、WebRTC 泄露检测、IPv4/IPv6 出口检测与实时 ASN 变化监控。",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "Any",
+        "inLanguage": "zh-CN",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "CNY" },
+        "featureList": [
+          "IP 地理位置与归属查询",
+          "家庭宽带（家宽）IP 判定",
+          "IP 欺诈值与信任评分",
+          "代理 / VPN / Tor / 数据中心识别",
+          "DNS 泄露检测",
+          "WebRTC 泄露检测",
+          "IPv4 / IPv6 出口检测",
+          "实时 ASN 与 BGP 路由变化监控",
+          "开放 JSON API"
+        ]
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://iplens.imxiaohe.com/#site",
+        "name": "IPLens",
+        "url": "https://iplens.imxiaohe.com/",
+        "inLanguage": "zh-CN",
+        "publisher": { "@id": "https://iplens.imxiaohe.com/#app" }
+      },
+      {
+        "@type": "FAQPage",
+        "@id": "https://iplens.imxiaohe.com/#faq",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "IPLens 是什么？",
+            "acceptedAnswer": { "@type": "Answer", "text": "IPLens 是一个免费的在线 IP 与网络隐私检测工具，打开页面即可自动检测你当前出口 IP 的地理位置、网络类型、欺诈值与信任评分，并提供 DNS 泄露、WebRTC 泄露、IPv4/IPv6 出口和实时 ASN 变化监控等检测能力。" }
+          },
+          {
+            "@type": "Question",
+            "name": "如何判断一个 IP 是不是家宽（家庭宽带）IP？",
+            "acceptedAnswer": { "@type": "Answer", "text": "IPLens 综合多个数据源对 IP 的网络类型进行判定：住宅（Residential）类型通常对应家庭宽带，同时结合是否存在代理、VPN、数据中心等风险信号交叉验证，并给出判定置信度。" }
+          },
+          {
+            "@type": "Question",
+            "name": "IP 欺诈值和信任评分代表什么？",
+            "acceptedAnswer": { "@type": "Answer", "text": "欺诈值（0-100）越高，表示该 IP 越可能来自代理、VPN、Tor、数据中心或存在威胁记录；信任评分 = 100 - 欺诈值。评分由网络类型基线、数据源置信度与真实风险信号共同计算，家宽 IP 通常落在较高但非满分的区间。" }
+          },
+          {
+            "@type": "Question",
+            "name": "什么是 DNS 泄露？如何检测？",
+            "acceptedAnswer": { "@type": "Answer", "text": "使用代理或 VPN 时，如果 DNS 请求仍走本地运营商的解析服务器，就会暴露你的真实网络位置，称为 DNS 泄露。IPLens 通过发起多次随机子域名解析并收集应答的递归服务器出口，判断是否存在泄露及泄露到的地区。" }
+          },
+          {
+            "@type": "Question",
+            "name": "什么是 WebRTC 泄露？",
+            "acceptedAnswer": { "@type": "Answer", "text": "浏览器的 WebRTC 功能在建立连接时可能绕过代理直接暴露本机真实 IP（包括内网地址）。IPLens 通过 STUN 请求收集浏览器暴露的候选地址，帮助你确认代理环境下是否仍有真实 IP 泄露。" }
+          },
+          {
+            "@type": "Question",
+            "name": "IPLens 收费吗？需要注册吗？",
+            "acceptedAnswer": { "@type": "Answer", "text": "完全免费，无需注册或登录，打开页面即可使用全部检测功能，并提供开放的 JSON API 供程序化调用。" }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
 </head>
 <body>
+  <noscript>
+    <h1>IPLens · 免费 IP 检测雷达</h1>
+    <p>IPLens 是一个免费的在线 IP 与网络隐私检测工具：家宽判定、IP 欺诈值与信任评分、代理/VPN/Tor 识别、DNS 泄露检测、WebRTC 泄露检测、IPv4/IPv6 出口检测与实时 ASN 变化监控，打开即用，无需注册。</p>
+    <p>本页面的检测功能需要启用 JavaScript。启用后刷新页面即可自动开始检测。</p>
+  </noscript>
   <div class="aurora" aria-hidden="true"></div>
   <div class="grain" aria-hidden="true"></div>
 

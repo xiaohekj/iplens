@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /functions/
+
+Sitemap: https://iplens.imxiaohe.com/sitemap.xml
