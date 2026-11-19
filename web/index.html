@@ -479,11 +479,11 @@
   </footer>
 
   <!-- ============ PRIVACY POLICY MODAL (AdSense Required Content) ============ -->
-  <dialog class="privacy-dialog" id="privacy-dialog" aria-labelledby="privacy-title" onclick="if(event.target===this)this.close()">
+  <dialog class="privacy-dialog" id="privacy-dialog" aria-labelledby="privacy-title" onclick="if(event.target===this)closePrivacyModal()">
     <div class="privacy-box">
       <div class="privacy-head">
         <h3 id="privacy-title">隐私政策与免责声明</h3>
-        <button class="icon-btn" type="button" aria-label="关闭弹窗" onclick="document.getElementById('privacy-dialog').close()">
+        <button class="icon-btn" type="button" aria-label="关闭弹窗" onclick="closePrivacyModal()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
       </div>
@@ -494,9 +494,28 @@
         <p>本站使用 <strong>Google Analytics</strong> 统计匿名访问流量以优化工具性能，并可能使用 <strong>Google AdSense</strong> 展示广告。Google 及第三方供应商会使用 Cookie 根据用户此前对本站或其他网站的访问记录来投放广告。您可以随时访问 <a href="https://adssettings.google.com/" target="_blank" rel="noopener noreferrer">Google 广告设置</a> 或 <a href="https://www.aboutads.info/" target="_blank" rel="noopener noreferrer">aboutads.info</a> 停用个性化广告。</p>
         <h4>3. 免责声明与联系方式</h4>
         <p>IP 地理位置、家宽类型与欺诈评分结果均聚合自第三方公开情报数据库，仅供网络诊断与安全评估参考。如有任何问题或建议，请通过邮箱联系：<strong>hezhanleiok@gmail.com</strong>。</p>
+        <div style="margin-top: 16px; text-align: right;">
+          <button class="btn btn-primary btn-sm" type="button" onclick="closePrivacyModal()">我已知晓并同意</button>
+        </div>
       </div>
     </div>
   </dialog>
+
+  <script>
+    function closePrivacyModal() {
+      var d = document.getElementById('privacy-dialog');
+      if (d) d.close();
+      try { localStorage.setItem('iplens_privacy_ack', '1'); } catch (e) {}
+    }
+    window.addEventListener('DOMContentLoaded', function() {
+      try {
+        if (!localStorage.getItem('iplens_privacy_ack')) {
+          var d = document.getElementById('privacy-dialog');
+          if (d && typeof d.showModal === 'function') d.showModal();
+        }
+      } catch (e) {}
+    });
+  </script>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </body>
