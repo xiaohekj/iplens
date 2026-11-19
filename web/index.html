@@ -2,11 +2,12 @@
 <html lang="zh-CN">
 <head>
   <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtm.js?id=GTM-NQZFJMPG"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-5EKHNRYENC"></script>
   <script>
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
     gtag('js', new Date());
+    gtag('config', 'G-5EKHNRYENC');
   </script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -322,6 +323,40 @@
         </div>
         <p class="exit-summary" id="exit-summary">正在探测双栈出口…</p>
       </div>
+
+      <!-- ============ FAQ SECTION (SEO & AdSense Content Compliance) ============ -->
+      <div class="faq-section" id="faq-section">
+        <div class="exit-section-head">
+          <h3 class="card-title inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .8c0 1.7-2.5 2.2-2.5 3.7M12 17h.01"/></svg>检测原理与常见问题</h3>
+          <span class="title-hint">了解家宽判定、欺诈评分、DNS 与 WebRTC 泄露背后的网络诊断逻辑</span>
+        </div>
+        <div class="faq-list">
+          <details class="faq-item">
+            <summary>1. 如何判断一个 IP 是不是家宽（家庭宽带）IP？</summary>
+            <p>IPLens 综合多个全球 IP 情报源对目标地址的 ASN 归属与网络路由类型进行交叉判定：住宅（Residential）类型通常对应家庭宽带，同时结合是否存在代理、VPN、Tor 节点或数据中心（Datacenter）服务器托管特征进行二次核验，并给出判定置信度。</p>
+          </details>
+          <details class="faq-item">
+            <summary>2. IP 欺诈值和信任评分代表什么？</summary>
+            <p>欺诈值（0–100%）越高，表示该 IP 越可能来自公共代理、数据中心机房、VPN 出口或历史威胁记录；信任评分 = 100 - 欺诈值。评分由网络类型基线、数据源置信度与真实风险信号共同计算，原生家宽 IP 通常落在较高信任评分区间。</p>
+          </details>
+          <details class="faq-item">
+            <summary>3. 什么是 DNS 泄露？如何检测？</summary>
+            <p>使用代理或 VPN 时，如果 DNS 域名解析请求仍直接发送给本地运营商的 DNS 服务器，就会暴露你的真实地理位置，称为 DNS 泄露。IPLens 通过发起多次随机子域名解析并收集应答的递归解析服务器出口归属，帮助你判断是否存在泄露。</p>
+          </details>
+          <details class="faq-item">
+            <summary>4. 什么是 WebRTC 泄露？</summary>
+            <p>现代浏览器的 WebRTC 实时通信协议在建立点对点连接时，可能绕过常规 HTTP 代理直接通过 STUN 服务器探测并暴露本机真实公网或内网 IP。IPLens 通过模拟 STUN 请求收集浏览器暴露的候选地址，帮你确认当前代理环境是否严密。</p>
+          </details>
+          <details class="faq-item">
+            <summary>5. ASN 变化监控有什么用途？</summary>
+            <p>ASN（自治系统编号）代表全球互联网中独立管理的网络运营商或大型机构。通过接入 RIPE RIS Live 实时 BGP 路由数据流，你可以观察全球 IPv4/IPv6 地址前缀的路由公告与撤回动态，辅助排查网络绕路与线路波动。</p>
+          </details>
+          <details class="faq-item">
+            <summary>6. IPLens 收费吗？支持程序化调用吗？</summary>
+            <p>完全免费且无需注册登录，打开页面即可使用全部检测能力；同时提供同源开放 JSON API，方便开发者在脚本或客户端中直接调用查询 IP 情报。</p>
+          </details>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -439,9 +474,29 @@
   </section>
 
   <footer class="footer">
-    <p>IPLens · IP 检测雷达 — 数据仅供网络诊断与安全参考</p>
+    <p>IPLens · IP 检测雷达 — 数据仅供网络诊断与安全参考 · <button class="footer-link" type="button" onclick="document.getElementById('privacy-dialog').showModal()">隐私政策与声明</button></p>
     <p class="footer-sub">Powered by ipquery.io · ip-api.com · ipwho.is · RIPE RIS Live · Esri</p>
   </footer>
+
+  <!-- ============ PRIVACY POLICY MODAL (AdSense Required Content) ============ -->
+  <dialog class="privacy-dialog" id="privacy-dialog" aria-labelledby="privacy-title" onclick="if(event.target===this)this.close()">
+    <div class="privacy-box">
+      <div class="privacy-head">
+        <h3 id="privacy-title">隐私政策与免责声明</h3>
+        <button class="icon-btn" type="button" aria-label="关闭弹窗" onclick="document.getElementById('privacy-dialog').close()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="privacy-body">
+        <h4>1. 数据查询与处理说明</h4>
+        <p>IPLens 仅在您主动访问或输入 IP 地址时，实时查询对应公网 IP 的网络归属、地理位置与安全信誉情报。本工具不要求注册账号，也不会将您的个人身份与查询记录进行关联存储。</p>
+        <h4>2. Cookie 与第三方服务（Google Analytics &amp; AdSense）</h4>
+        <p>本站使用 <strong>Google Analytics</strong> 统计匿名访问流量以优化工具性能，并可能使用 <strong>Google AdSense</strong> 展示广告。Google 及第三方供应商会使用 Cookie 根据用户此前对本站或其他网站的访问记录来投放广告。您可以随时访问 <a href="https://adssettings.google.com/" target="_blank" rel="noopener noreferrer">Google 广告设置</a> 或 <a href="https://www.aboutads.info/" target="_blank" rel="noopener noreferrer">aboutads.info</a> 停用个性化广告。</p>
+        <h4>3. 免责声明与联系方式</h4>
+        <p>IP 地理位置、家宽类型与欺诈评分结果均聚合自第三方公开情报数据库，仅供网络诊断与安全评估参考。如有任何问题或建议，请通过邮箱联系：<strong>hezhanleiok@gmail.com</strong>。</p>
+      </div>
+    </div>
+  </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </body>
