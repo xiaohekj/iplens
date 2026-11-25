@@ -1,8 +1,31 @@
-# IPSpot (`ipspot.org`)
+<div align="center">
 
-专业、透明、免费的在线 IP 纯净度与网络环境诊断平台。默认深色科技主题，支持一键切换浅色模式（含地图底图联动），提供多源防误判家宽/机房识别、透明扣分明细、原生/广播地理对照、所属企业与 RDAP/RIPEstat 历史记录、人机指纹环境对比、全球免费 AI 诊断、DNS/WebRTC 泄露检测及实时 ASN 监控。
+<img src="web/favicon.svg" alt="IPSpot" width="88" />
 
-## 核心能力与真实数据源
+<h1>IPSpot</h1>
+
+<p>专业、透明、免费的在线 IP 纯净度与网络环境诊断平台</p>
+
+<p><a href="#english">English</a> · <strong>简体中文</strong></p>
+
+<p>
+  <img src="https://img.shields.io/badge/JavaScript-ES2022-f7df1e?logo=javascript&amp;logoColor=black" alt="JavaScript" />
+  <img src="https://img.shields.io/badge/Cloudflare-Pages-orange?logo=cloudflare" alt="Cloudflare Pages" />
+  <img src="https://img.shields.io/badge/Deno-ready-363d5d?logo=deno" alt="Deno" />
+  <img src="https://img.shields.io/badge/AI-free-brightgreen" alt="Free AI" />
+</p>
+
+<p><a href="https://ipspot.org">Website</a> · <a href="https://ipspot.org">Live Demo</a> · <a href="#quick-start">Quick Start</a> · <a href="#api">API</a></p>
+
+<img src="web/og-image.jpg" alt="IPSpot 主视觉" width="760" />
+
+</div>
+
+<a id="chinese"></a>
+
+## 简体中文
+
+### 核心能力与真实数据源
 
 - **多源防误判引擎**：并行聚合 `ipapi.is`、`ipquery.io`、`ip-api.com`、`ipwho.is` 与官方 `RDAP`，引入云商/IDC 关键词与 `rDNS` 一票否决，精准区分原生家宽、双 ISP 商宽托管与数据中心机房，支持直接输入域名自动解析 IP。
 - **透明风险评分**：0–100% 风险值与信任分，逐项列出扣分依据（网络基线、跨区广播、代理/VPN/Tor、滥用与爬虫信号）。
@@ -11,7 +34,7 @@
 - **免费全球可用 AI 诊断**：同源后端中转（`POST /functions/v1/app?action=ai`），国内直连与海外均可正常使用。
 - **隐私与网络工具**：随机子域防缓存 DNS 泄露检测、多 STUN WebRTC 泄露检测、IPv4/IPv6 双栈出口与主流平台连通延迟探测、RIPE RIS Live 实时 BGP 监控。
 
-## 目录结构
+### 目录结构
 
 ```text
 web/                       前端静态文件（Cloudflare Pages 构建输出目录）
@@ -32,7 +55,9 @@ dev/
   serve.mjs                本地预览开发服务器
 ```
 
-## 本地预览（无需推送仓库）
+<a id="quick-start"></a>
+
+### 本地预览（无需推送仓库）
 
 需要 Node.js 22+（支持直接运行 `.ts` 文件，若版本较低可使用 `npx tsx dev/serve.mjs`）：
 
@@ -52,7 +77,7 @@ node dev/serve.mjs
 >
 > 不配置任何 Key 时，AI 诊断会自动走内置的 **IPSpot 专家规则引擎**，保证 100% 正常响应不报错。
 
-## Cloudflare Pages 部署与免费 AI 一键绑定
+### Cloudflare Pages 部署与免费 AI 一键绑定
 
 1. 将仓库推送至 GitHub，在 Cloudflare 控制台选择 **Workers & Pages -> 创建 -> Pages -> 连接到 Git**。
 2. 构建配置：
@@ -65,7 +90,9 @@ node dev/serve.mjs
 4. **可选备用免费大模型**：
    - 在 **设置 -> 环境变量** 中添加 `AI_API_KEY`（如智谱 `glm-4-flash`、硅基流动或 Groq 免费 Key）、`AI_API_URL` 和 `AI_MODEL`，系统会在 Workers AI 额度耗尽时自动无缝切换。
 
-## 开放 API
+<a id="api"></a>
+
+### 开放 API
 
 ```bash
 curl https://ipspot.org/functions/v1/app
@@ -75,6 +102,98 @@ curl "https://ipspot.org/functions/v1/app?asn=15169&pfx=8.8.8.0/24"
 ```
 
 AI 诊断接口（POST）：
+
+```bash
+curl -X POST "https://ipspot.org/functions/v1/app?action=ai" \
+  -H "Content-Type: application/json" \
+  -d '{"ip":"1.1.1.1"}'
+```
+
+---
+
+<a id="english"></a>
+
+<div align="center">
+
+<p><strong>English</strong> · <a href="#chinese">简体中文</a></p>
+
+</div>
+
+## English
+
+### Core Capabilities & Real Data Sources
+
+- **Multi-source misjudgment-proof engine**: aggregates `ipapi.is`, `ipquery.io`, `ip-api.com`, `ipwho.is` and official `RDAP` in parallel, with cloud/IDC keywords and `rDNS` veto, to distinguish residential, dual-ISP business hosting and datacenter IPs. Domain names are resolved automatically.
+- **Transparent risk scoring**: 0–100% risk value and trust score, with every deduction explained (network baseline, cross-region broadcast, proxy/VPN/Tor, abuse and crawler signals).
+- **Ownership and history**: live RDAP net name, RIR organization, registration/update dates and `RIPEstat` BGP history.
+- **Human vs bot comparison**: locally collected WebDriver/Headless traits, Canvas/WebGL fingerprints, timezone and language, cross-checked against the exit IP.
+- **Free AI diagnosis worldwide**: same-origin backend relay (`POST /functions/v1/app?action=ai`), reachable from mainland China and overseas.
+- **Privacy and network tools**: randomized-subdomain DNS leak test, multi-STUN WebRTC leak test, IPv4/IPv6 dual-stack exit check, connectivity latency and RIPE RIS Live BGP monitor.
+
+### Project Structure
+
+```text
+web/                       Static frontend (Cloudflare Pages build output)
+  index.html               Main page and Bento dashboard skeleton
+  styles.css               Dark + light themes and reserved ad slots
+  app.js                   Multi-source rendering, fingerprinting, AI, tools
+  favicon.svg              Browser tab icon
+  logo.svg                 IPSpot brand wordmark
+  robots.txt               Crawler rules
+  sitemap.xml              Sitemap
+functions/                 Cloudflare Pages Functions (auto-compiled)
+  functions/v1/app.ts      Route /functions/v1/app (passes env through)
+lib/
+  handler.ts               Shared backend logic (aggregation, scoring, AI relay)
+deno/
+  index.ts                 Deno deployment entry
+dev/
+  serve.mjs                Local preview server
+```
+
+### Local Preview
+
+Requires Node.js 22+ (runs `.ts` directly; use `npx tsx dev/serve.mjs` on older versions):
+
+```bash
+node dev/serve.mjs
+```
+
+Then open **http://127.0.0.1:4173/** in your browser.
+
+> To test the free LLM diagnosis locally, create a `.env` file in the project root (do not commit it):
+>
+> ```env
+> AI_API_KEY=your_free_api_key
+> AI_API_URL=https://open.bigmodel.cn/api/paas/v4/chat/completions
+> AI_MODEL=glm-4-flash
+> ```
+>
+> Without any key, AI diagnosis falls back to the built-in **IPSpot expert rule engine** and always responds normally.
+
+### Cloudflare Pages Deployment & Free AI Setup
+
+1. Push the repository to GitHub, then in Cloudflare choose **Workers & Pages -> Create -> Pages -> Connect to Git**.
+2. Build settings:
+   - **Framework preset**: `None`
+   - **Build command**: leave empty
+   - **Build output directory**: `web`
+3. **Enable free Cloudflare Workers AI (10,000 Neurons/day, no key, same-origin access worldwide)**:
+   - In the Pages project open **Settings -> Bindings -> Add**.
+   - Choose **Workers AI**, set the variable name to **`AI`**, save and redeploy.
+4. **Optional backup LLM**:
+   - Under **Settings -> Environment Variables** add `AI_API_KEY` (e.g. Zhipu `glm-4-flash`, SiliconFlow or Groq free key), `AI_API_URL` and `AI_MODEL`. The system switches automatically when the Workers AI quota is exhausted.
+
+### Public API
+
+```bash
+curl https://ipspot.org/functions/v1/app
+curl "https://ipspot.org/functions/v1/app?q=1.1.1.1"
+curl "https://ipspot.org/functions/v1/app?q=openai.com"
+curl "https://ipspot.org/functions/v1/app?asn=15169&pfx=8.8.8.0/24"
+```
+
+AI diagnosis endpoint (POST):
 
 ```bash
 curl -X POST "https://ipspot.org/functions/v1/app?action=ai" \
