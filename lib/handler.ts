@@ -1,3 +1,5 @@
+type Lang = "en" | "zh-CN" | "zh-TW" | "ja";
+
 type Signal = {
   key: string;
   label: string;
@@ -6,9 +8,11 @@ type Signal = {
 };
 
 type ScoreBreakdownItem = {
+  key: string;
   label: string;
   delta: number;
   reason: string;
+  meta?: Record<string, string | number>;
 };
 
 type GeoCompareItem = {
@@ -211,6 +215,14 @@ const RESIDENTIAL_ASNS = new Set([
   577, 852, 680, 6830, 1273, 5511, 1267, 3269, 12874, 8374, 3462,
   4760, 9269, 3758, 4657,
 ]);
+
+function normalizeLang(raw: unknown): Lang {
+  const s = String(raw || "").trim().toLowerCase();
+  if (s === "zh-tw" || s === "zh-hk" || s === "zh-hant") return "zh-TW";
+  if (s === "zh-cn" || s === "zh" || s === "zh-hans") return "zh-CN";
+  if (s === "ja" || s === "jp") return "ja";
+  return "en";
+}
 
 function getEnv(env: Record<string, unknown> | undefined, key: string): string {
   if (env && typeof env[key] === "string" && (env[key] as string).trim()) {
@@ -443,7 +455,7 @@ function cleanDomain(raw: unknown): string {
     .trim();
 }
 
-/* ================= Cloudflare Radar（真实人机比 + 官方 ASN 注册国兜底） ================= */
+/* ================= Cloudflare Radar ================= */
 async function fetchRadarBotClass(
   asnNum: number,
   env?: Record<string, unknown>,
@@ -529,7 +541,7 @@ async function fetchRadarAsnEntity(
   return null;
 }
 
-/* ================= Shodan InternetDB（免费免 Key 端口与资产标签） ================= */
+/* ================= Shodan InternetDB ================= */
 function extractShodanExposure(shodan: any): Report["exposure"] {
   if (!shodan || typeof shodan !== "object" || shodan.detail) {
     return { ports: [], tags: [], vulnsCount: 0 };
@@ -562,7 +574,7 @@ function extractShodanExposure(shodan: any): Report["exposure"] {
   };
 }
 
-/* ================= RDAP 解析（精准兼容 ARIN / RIPE / APNIC） ================= */
+/* ================= RDAP & History ================= */
 function extractRdapInfo(rdap: any) {
   const out = {
     countryCode: "",
@@ -770,7 +782,6 @@ function buildReport(
     normalizeCountryCode(ipapi?.asn?.country) ||
     "";
 
-  // 1. 多源地理对照
   const multiSource: GeoCompareItem[] = [];
   if (maxmindLoc && maxmindLoc.country) {
     const [cc, region] = String(maxmindLoc.country).split("-");
@@ -923,7 +934,6 @@ function buildReport(
   };
   const loc = pickLoc();
 
-  // 2. 原生 IP / 广播 IP + CIDR / IP 范围 + 注册地历史
   let isNative: boolean | null = null;
   let geoTypeLabel = "未知来源";
   if (registeredCC && loc.cc) {
@@ -982,7 +992,6 @@ function buildReport(
     rir: registryHistory[0]?.rir || rdapInfo.rir || radarEntity?.rir || "",
   };
 
-  // 3. 风险信号与防误判判定（融合 Shodan + AbuseIPDB）
   const shodanTagsLower = exposure.tags.map((t) => t.toLowerCase());
   const shodanHasCloud = shodanTagsLower.includes("cloud");
   const shodanHasProxy = shodanTagsLower.some((t) => t === "proxy" || t === "open-proxy" || t === "proxy-port");
@@ -1065,7 +1074,6 @@ function buildReport(
     type = { code: "unknown", label: "商业/未分类", residential: false, confidence: "low", reason: "缺乏家宽证据，审慎归类" };
   }
 
-  // 4. 人机流量比
   let humanRatio: RadarBotData;
   if (radar) {
     humanRatio = { human: radar.human, bot: radar.bot, source: "cloudflare-radar" };
@@ -1085,46 +1093,50 @@ function buildReport(
     humanRatio = { human: h, bot: 100 - h, source: "estimated" };
   }
 
-  // 5. 动态校准风控评分（融合 AbuseIPDB 真实 90 天举报分 + Radar Bot 密度 + Shodan）
   const breakdown: ScoreBreakdownItem[] = [];
-  const addScore = (label: string, delta: number, reason: string) => {
-    if (delta !== 0) breakdown.push({ label, delta, reason });
+  const addScore = (
+    key: string,
+    label: string,
+    delta: number,
+    reason: string,
+    meta?: Record<string, string | number>,
+  ) => {
+    if (delta !== 0) breakdown.push({ key, label, delta, reason, ...(meta ? { meta } : {}) });
   };
 
-  if (type.code === "residential") addScore("网络基线", type.confidence === "high" ? 5 : 10, "原生住宅宽带基线");
-  else if (type.code === "mobile") addScore("网络基线", 12, "移动蜂窝 CGNAT 共享出口");
-  else if (type.code === "business") addScore("网络基线", 18, "企业/机构商用网络");
-  else if (type.code === "dual_isp") addScore("网络基线", 26, "双 ISP / 广播托管段");
-  else if (type.code === "datacenter") addScore("网络基线", 28, "数据中心 / 云主机网络");
-  else addScore("网络基线", 22, "归属证据不足审慎基线");
+  if (type.code === "residential") addScore("baseline_residential", "网络基线", type.confidence === "high" ? 5 : 10, "原生住宅宽带基线");
+  else if (type.code === "mobile") addScore("baseline_mobile", "网络基线", 12, "移动蜂窝 CGNAT 共享出口");
+  else if (type.code === "business") addScore("baseline_business", "网络基线", 18, "企业/机构商用网络");
+  else if (type.code === "dual_isp") addScore("baseline_dual_isp", "网络基线", 26, "双 ISP / 广播托管段");
+  else if (type.code === "datacenter") addScore("baseline_datacenter", "网络基线", 28, "数据中心 / 云主机网络");
+  else addScore("baseline_unknown", "网络基线", 22, "归属证据不足审慎基线");
 
   if (radar) {
-    if (radar.bot >= 90) addScore("ASN 机器流量", 9, `Radar 实测该 ASN 机器流量占比 ${radar.bot}%`);
-    else if (radar.bot >= 75) addScore("ASN 机器流量", 6, `Radar 实测该 ASN 机器流量占比 ${radar.bot}%`);
-    else if (radar.bot >= 55) addScore("ASN 机器流量", 3, `Radar 实测该 ASN 机器流量占比 ${radar.bot}%`);
+    if (radar.bot >= 90) addScore("radar_bot", "ASN 机器流量", 9, `Radar 实测该 ASN 机器流量占比 ${radar.bot}%`, { bot: radar.bot });
+    else if (radar.bot >= 75) addScore("radar_bot", "ASN 机器流量", 6, `Radar 实测该 ASN 机器流量占比 ${radar.bot}%`, { bot: radar.bot });
+    else if (radar.bot >= 55) addScore("radar_bot", "ASN 机器流量", 3, `Radar 实测该 ASN 机器流量占比 ${radar.bot}%`, { bot: radar.bot });
   }
 
-  if (isNative === false) addScore("跨区广播", 12, `注册国 ${registeredCC} ≠ 定位国 ${loc.cc}`);
-  if (isTor) addScore("Tor 节点", 45, "命中 Tor 匿名出口");
-  if (isVpn) addScore("VPN 出口", 20, "命中 VPN 节点库");
-  if (isProxy) addScore("代理节点", 22, "命中公开代理或转发节点");
-  if (isDc && (isProxy || isVpn)) addScore("机房代理叠加", 8, "机房 + 代理复合高危特征");
+  if (isNative === false) addScore("broadcast", "跨区广播", 12, `注册国 ${registeredCC} ≠ 定位国 ${loc.cc}`, { reg: registeredCC, loc: loc.cc });
+  if (isTor) addScore("tor", "Tor 节点", 45, "命中 Tor 匿名出口");
+  if (isVpn) addScore("vpn", "VPN 出口", 20, "命中 VPN 节点库");
+  if (isProxy) addScore("proxy", "代理节点", 22, "命中公开代理或转发节点");
+  if (isDc && (isProxy || isVpn)) addScore("dc_proxy", "机房代理叠加", 8, "机房 + 代理复合高危特征");
 
   if (abuseData && abuseDbConf > 0) {
     const scaled = Math.min(35, Math.max(4, Math.round(abuseDbConf * 0.35)));
-    addScore("AbuseIPDB 举报", scaled, `近 90 天被举报 ${abuseDbReports} 次（置信度 ${abuseDbConf}%）`);
+    addScore("abuseipdb", "AbuseIPDB 举报", scaled, `近 90 天被举报 ${abuseDbReports} 次（置信度 ${abuseDbConf}%）`, { reports: abuseDbReports, conf: abuseDbConf });
   } else if (isAbuser) {
     const abuseDelta = abuserRatio >= 0.1 || ipqThreat >= 60 || shodanCompromised ? 24 : 16;
-    addScore("滥用与威胁", abuseDelta, "命中滥用或威胁情报源");
+    addScore("abuse_generic", "滥用与威胁", abuseDelta, "命中滥用或威胁情报源");
   }
 
-  if (isCrawler) addScore("爬虫来源", 10, "命中商业/抓取爬虫库");
-  if (exposure.vulnsCount >= 3) addScore("暴露面漏洞", 6, `Shodan 发现 ${exposure.vulnsCount} 个已知漏洞特征`);
+  if (isCrawler) addScore("crawler", "爬虫来源", 10, "命中商业/抓取爬虫库");
+  if (exposure.vulnsCount >= 3) addScore("vulns", "暴露面漏洞", 6, `Shodan 发现 ${exposure.vulnsCount} 个已知漏洞特征`, { count: exposure.vulnsCount });
 
   const fraud = Math.max(0, Math.min(100, Math.round(breakdown.reduce((s, x) => s + x.delta, 0))));
   const trust = 100 - fraud;
 
-  // 6. 严格 6 项核心风险信号
   const signals: Signal[] = [
     { key: "proxy", label: "代理服务器", detected: isProxy, desc: "流量是否经过公开代理或匿名代理转发" },
     { key: "vpn", label: "VPN 出口", detected: isVpn, desc: "是否为已知 VPN 服务的出口节点" },
@@ -1369,31 +1381,152 @@ async function lookupGeoAddress(
     }
   } catch { /* ignore */ }
 
-  return { ok: false, error: "geoaddr_unavailable", message: "逆地理编码服务暂时不可用" };
+  return { ok: false, error: "geoaddr_unavailable", message: "Reverse geocoding unavailable" };
 }
 
-/* ================= 5 层免费全球通用 AI 自动容灾引擎 ================= */
-function buildRuleBasedAnalysis(report: Report, clientEnv: any): string {
+/* ================= 5 层免费多语言 AI 自动容灾引擎 ================= */
+function buildRuleBasedAnalysis(report: Report, clientEnv: any, lang: Lang): string {
   const fraud = report.scores.fraud;
-  const hits = report.signals.filter((s) => s.detected).map((s) => s.label);
+  const bot = report.humanRatio.bot;
+  const isRes = report.type.residential;
+  const isNative = report.location.isNative !== false;
   const envWarn = clientEnv && Array.isArray(clientEnv.warnings) ? clientEnv.warnings : [];
 
-  const chatgpt = fraud <= 20 && report.type.residential ? "极佳，低验证概率" : fraud <= 45 ? "可用，偶发人机校验" : "易降智或被拦截";
-  const biz = fraud <= 18 && report.type.residential && report.location.isNative !== false ? "适合社媒养号 / 跨境店铺" : fraud <= 40 ? "仅建议日常浏览" : "不建议用于注册、起号或支付";
+  if (lang === "en") {
+    const verdict = fraud <= 18 && isRes ? "Clean residential IP with low risk" :
+      fraud <= 35 ? "Low-to-moderate risk IP suitable for standard access" :
+      fraud <= 55 ? `Neutral risk ${report.type.code} IP (${bot}% bot traffic on ASN)` :
+      `High-risk ${report.type.code} IP (${fraud}% risk score)`;
+    const aiPlat = fraud <= 20 && isRes ? "Highly recommended — minimal verification friction" :
+      fraud <= 45 && bot < 80 ? "Usable — occasional CAPTCHA or rate checks" :
+      "Not recommended — high chance of CAPTCHA, downgrade, or blocks";
+    const biz = fraud <= 18 && isRes && isNative ? "Suitable for social accounts, e-commerce, and payments" :
+      fraud <= 38 && isRes ? "Browsing & light registration only" :
+      "Not recommended — avoid account sign-ups, ads, or payment checkout";
+    const tip = envWarn.length ? "Align local timezone/language with exit IP and verify WebRTC." :
+      fraud > 35 ? "Switch to a clean native residential IP for sensitive workflows." :
+      "Environment looks clean; keep current network and timezone settings.";
+    return [
+      `- **Verdict**: ${verdict} (Risk ${fraud}%, Purity ${report.scores.trust}/100)`,
+      `- **AI Platforms**: ${aiPlat}`,
+      `- **Commerce / Social / Payments**: ${biz}`,
+      `- **Recommendation**: ${tip}`,
+    ].join("\n");
+  }
+
+  if (lang === "zh-TW") {
+    const verdict = fraud <= 18 && isRes ? "純淨原生家寬 IP，風控風險極低" :
+      fraud <= 35 ? "低風險網路節點，常規存取穩定" :
+      fraud <= 55 ? `中性風險 ${report.type.label}（所屬 ASN 機器流量 ${bot}%）` :
+      `高風險 ${report.type.label}（風險係數 ${fraud}%）`;
+    const aiPlat = fraud <= 20 && isRes ? "高度推薦，觸發驗證機率極低" :
+      fraud <= 45 && bot < 80 ? "可用，偶發人機驗證或降速" :
+      "不推薦，機房或高 Bot 特徵易觸發降智與攔截";
+    const biz = fraud <= 18 && isRes && isNative ? "適合社群養號、跨境電商與支付場景" :
+      fraud <= 38 && isRes ? "僅建議日常瀏覽，謹慎用於敏感註冊" :
+      "不推薦，請勿用於註冊、廣告投放或支付結帳";
+    const tip = fraud > 35 ? "敏感業務建議切換至乾淨的原生住宅家寬 IP。" : "目前環境良好，保持本機時區與出口地區一致即可。";
+    return [
+      `- **綜合定性**：${verdict}（風險 ${fraud}% / 純淨分 ${report.scores.trust}）`,
+      `- **AI 平台 (ChatGPT/Claude)**：${aiPlat}`,
+      `- **跨境 / 社群 / 支付**：${biz}`,
+      `- **實操建議**：${tip}`,
+    ].join("\n");
+  }
+
+  if (lang === "ja") {
+    const verdict = fraud <= 18 && isRes ? "クリーンなネイティブ住宅IP（低リスク）" :
+      fraud <= 35 ? "標準利用に適した低〜中リスクIP" :
+      fraud <= 55 ? `中立リスクIP（ASNのBot比率 ${bot}%）` :
+      `高リスクIP（リスク係数 ${fraud}%）`;
+    const aiPlat = fraud <= 20 && isRes ? "強く推奨 — 認証要求の発生率は極めて低い" :
+      fraud <= 45 && bot < 80 ? "利用可能 — 時々CAPTCHAが表示される可能性あり" :
+      "非推奨 — Bot判定による制限やブロックの可能性が高い";
+    const biz = fraud <= 18 && isRes && isNative ? "SNS運用・EC・決済用途に適しています" :
+      fraud <= 38 && isRes ? "通常閲覧向け、新規登録は慎重に" :
+      "非推奨 — アカウント登録や決済には使用しないでください";
+    const tip = fraud > 35 ? "重要な業務にはクリーンな住宅IPへの切り替えを推奨します。" : "環境は良好です。現在のネットワーク設定を維持してください。";
+    return [
+      `- **総合判定**：${verdict}（リスク ${fraud}% / 純度 ${report.scores.trust}/100）`,
+      `- **AI プラットフォーム**：${aiPlat}`,
+      `- **EC / SNS / 決済**：${biz}`,
+      `- **推奨アクション**：${tip}`,
+    ].join("\n");
+  }
+
+  const verdict = fraud <= 18 && isRes ? "纯净原生家宽 IP，风控风险极低" :
+    fraud <= 35 ? "低风险网络节点，常规访问稳定" :
+    fraud <= 55 ? `中性风险 ${report.type.label}（所属 ASN 机器流量 ${bot}%）` :
+    `高风险 ${report.type.label}（风险系数 ${fraud}%）`;
+  const aiPlat = fraud <= 20 && isRes ? "高度推荐，触发验证概率极低" :
+    fraud <= 45 && bot < 80 ? "基本可用，偶发人机校验或限速" :
+    "不推荐，高 Bot 比例易触发降智、验证或拦截";
+  const biz = fraud <= 18 && isRes && isNative ? "适合社媒养号、跨境店铺与支付场景" :
+    fraud <= 38 && isRes ? "仅建议日常浏览，谨慎用于敏感注册" :
+    "不推荐，请勿用于账号注册、起号或支付结账";
+  const tip = envWarn.length ? `建议处理本机环境偏差（${envWarn.join("、")}），敏感业务请换原生家宽 IP。` :
+    fraud > 35 ? "普通浏览可用；涉及注册或支付建议更换干净的原生家宽 IP。" :
+    "当前网络纯净度良好，保持出口地区与本地时区一致即可。";
 
   return [
-    `- **结论**：${report.type.label} · ${report.location.geoTypeLabel} · 风险系数 **${fraud}%**（健康分 ${report.scores.trust}/100，${hits.length ? `命中：${hits.join("、")}` : "无黑名单命中"}）`,
-    `- **AI 平台**：${chatgpt}`,
-    `- **跨境 / 支付**：${biz}`,
-    `- **建议**：${envWarn.length ? envWarn.join("；") : "保持当前网络与本地时区语言一致"}`,
+    `- **综合定性**：${verdict}（风险 ${fraud}% / 纯净分 ${report.scores.trust}）`,
+    `- **AI 平台 (ChatGPT/Claude)**：${aiPlat}`,
+    `- **跨境 / 社媒 / 支付**：${biz}`,
+    `- **实操建议**：${tip}`,
   ].join("\n");
+}
+
+function buildAiPrompts(lang: Lang, report: Report, clientEnv: any): { system: string; user: string } {
+  const payload = JSON.stringify({
+    ip: report.ip,
+    country: report.location.countryCode,
+    city: report.location.city,
+    isNative: report.location.isNative,
+    registeredCountry: report.location.registeredCountryCode,
+    networkType: report.type.code,
+    company: report.company.name,
+    riskScore: report.scores.fraud,
+    purityScore: report.scores.trust,
+    riskLevel: report.scores.riskCode,
+    humanPct: report.humanRatio.human,
+    botPct: report.humanRatio.bot,
+    abuseReports90d: report.abuse?.reports ?? 0,
+    abuseConfidence: report.abuse?.confidence ?? 0,
+    exposureTags: report.exposure.tags,
+    detectedSignals: report.signals.filter((s) => s.detected).map((s) => s.key),
+    clientWarnings: clientEnv?.warnings || [],
+  });
+
+  if (lang === "en") {
+    return {
+      system: "You are a strict IP risk analyst. Reply in concise English with exactly 4 Markdown bullet points (under 90 words total). Never contradict yourself: if riskScore >= 31 or botPct >= 70, NEVER call it 'high trust'. Use clear verdicts like 'Highly recommended', 'Browsing only', or 'Not recommended'.",
+      user: `Analyze this IP intelligence JSON and output exactly 4 bullets: 1.**Verdict** 2.**AI Platforms (ChatGPT/Claude)** 3.**Commerce / Social / Payments** 4.**Recommendation**.\n${payload}`,
+    };
+  }
+  if (lang === "zh-TW") {
+    return {
+      system: "你是嚴謹的 IP 風控專家，請用極簡繁體中文輸出恰好 4 條 Markdown 列表（總字數 150 字內）。嚴禁前後矛盾：當 riskScore >= 31 或 botPct >= 70 時絕不可稱為「高信任度」；嚴禁用孤立的「低，風險高」造成誤解，請直接寫「不推薦（高 Bot 風險）」「僅限普通瀏覽」「高度推薦」。",
+      user: `根據以下 IP 情報輸出 4 條精簡診斷：1.**綜合定性** 2.**AI 平台 (ChatGPT/Claude)** 3.**跨境 / 社群 / 支付** 4.**實操建議**。\n${payload}`,
+    };
+  }
+  if (lang === "ja") {
+    return {
+      system: "あなたは厳格なIPリスクアナリストです。簡潔な日本語で4つのMarkdown箇条書き（合計160文字以内）のみを出力してください。riskScore >= 31 または botPct >= 70 の場合は決して「高信頼」と書かず、「非推奨」「通常閲覧のみ」「強く推奨」など明確な表現を使ってください。",
+      user: `以下のIP情報から4項目を診断してください：1.**総合判定** 2.**AI プラットフォーム (ChatGPT/Claude)** 3.**EC / SNS / 決済** 4.**推奨アクション**。\n${payload}`,
+    };
+  }
+  return {
+    system: "你是严谨的 IP 风控专家，请用极简简体中文输出恰好 4 条 Markdown 列表（总字数 150 字内，禁止废话）。严格遵守两条规则：1.严禁前后矛盾，当 riskScore >= 31 或 botPct >= 70 时绝不可称为“高信任度”，31-50 分定性为中性/中等风险；2.严禁写出“低，风险高”这类易产生歧义的短语，必须直接写“不推荐（高 Bot 风险）”“仅限普通浏览”“基本可用”“高度推荐”。",
+    user: `根据以下真实 IP 情报输出 4 条简短诊断：1.**综合定性** 2.**AI 平台 (ChatGPT/Claude)** 3.**跨境 / 社媒 / 支付** 4.**实操建议**。\n${payload}`,
+  };
 }
 
 async function callOpenAiCompat(
   url: string,
   apiKey: string,
   model: string,
-  prompt: string,
+  system: string,
+  user: string,
   timeoutMs = 12000,
 ): Promise<string> {
   const c = new AbortController();
@@ -1408,11 +1541,11 @@ async function callOpenAiCompat(
       },
       body: JSON.stringify({
         model,
-        temperature: 0.25,
+        temperature: 0.2,
         max_tokens: 300,
         messages: [
-          { role: "system", content: "你是严谨的 IP 风控专家，用极简干练的简体中文 4 条短列表作答，禁止客套废话。" },
-          { role: "user", content: prompt },
+          { role: "system", content: system },
+          { role: "user", content: user },
         ],
       }),
     });
@@ -1429,40 +1562,23 @@ async function callOpenAiCompat(
 async function generateAiReport(
   report: Report,
   clientEnv: any,
+  lang: Lang,
   env?: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const envKey = clientEnv ? `${clientEnv.humanScore ?? ""}-${(clientEnv.warnings || []).length}` : "none";
-  const cacheKey = `${report.ip}:${report.scores.fraud}:${envKey}`;
+  const cacheKey = `${lang}:${report.ip}:${report.scores.fraud}:${envKey}`;
   const hit = aiCache.get(cacheKey);
   if (hit && Date.now() - hit.at < AI_CACHE_TTL) return { ...hit.data, cached: true };
 
-  const prompt = [
-    "根据以下真实 IP 情报，用极简中文输出 4 条 Markdown 列表（总字数 160 字内）：1.**定性** 2.**AI平台(ChatGPT/Claude/Gemini)适用度** 3.**跨境/社媒/支付适用度** 4.**一条实操建议**。",
-    JSON.stringify({
-      ip: report.ip,
-      geo: `${report.location.countryCode} ${report.location.city}`,
-      geoType: report.location.geoTypeLabel,
-      type: report.type.label,
-      company: report.company.name,
-      fraud: report.scores.fraud,
-      trust: report.scores.trust,
-      humanRatio: report.humanRatio,
-      abuse: report.abuse || null,
-      exposure: report.exposure.tags,
-      signals: report.signals.filter((s) => s.detected).map((s) => s.label),
-      envWarnings: clientEnv?.warnings || [],
-    }),
-  ].join("\n");
-
-  // 按免费高可用顺序依次尝试（均从环境变量/Secret 读取，无任何硬编码 Key）
+  const { system, user } = buildAiPrompts(lang, report, clientEnv);
   const providers: Array<{ name: string; run: () => Promise<string> }> = [];
 
   const zhipuKey = getEnv(env, "ZHIPU_API_KEY");
   if (zhipuKey) {
     const model = getEnv(env, "ZHIPU_MODEL") || "glm-4-flash-250414";
     providers.push({
-      name: "智谱 GLM-4-Flash",
-      run: () => callOpenAiCompat("https://open.bigmodel.cn/api/paas/v4/chat/completions", zhipuKey, model, prompt),
+      name: "GLM-4-Flash",
+      run: () => callOpenAiCompat("https://open.bigmodel.cn/api/paas/v4/chat/completions", zhipuKey, model, system, user),
     });
   }
 
@@ -1470,8 +1586,8 @@ async function generateAiReport(
   if (sfKey) {
     const model = getEnv(env, "SILICONFLOW_MODEL") || "Qwen/Qwen2.5-7B-Instruct";
     providers.push({
-      name: "硅基流动 Qwen2.5",
-      run: () => callOpenAiCompat("https://api.siliconflow.cn/v1/chat/completions", sfKey, model, prompt),
+      name: "Qwen2.5-7B",
+      run: () => callOpenAiCompat("https://api.siliconflow.cn/v1/chat/completions", sfKey, model, system, user),
     });
   }
 
@@ -1480,7 +1596,7 @@ async function generateAiReport(
     const model = getEnv(env, "GROQ_MODEL") || "llama-3.1-8b-instant";
     providers.push({
       name: "Groq Llama 3.1",
-      run: () => callOpenAiCompat("https://api.groq.com/openai/v1/chat/completions", groqKey, model, prompt),
+      run: () => callOpenAiCompat("https://api.groq.com/openai/v1/chat/completions", groqKey, model, system, user),
     });
   }
 
@@ -1488,12 +1604,12 @@ async function generateAiReport(
   if (cfAi && typeof cfAi.run === "function") {
     const model = getEnv(env, "CF_AI_MODEL") || "@cf/qwen/qwen2.5-7b-instruct-fast";
     providers.push({
-      name: "Cloudflare Workers AI",
+      name: "Workers AI",
       run: async () => {
         const aiRes = await cfAi.run(model, {
           messages: [
-            { role: "system", content: "你是严谨的 IP 风控专家，用极简干练的简体中文 4 条短列表作答。" },
-            { role: "user", content: prompt },
+            { role: "system", content: system },
+            { role: "user", content: user },
           ],
           max_tokens: 280,
         });
@@ -1510,7 +1626,7 @@ async function generateAiReport(
     const model = getEnv(env, "AI_MODEL") || "glm-4-flash";
     providers.push({
       name: model,
-      run: () => callOpenAiCompat(url, customKey, model, prompt),
+      run: () => callOpenAiCompat(url, customKey, model, system, user),
     });
   }
 
@@ -1520,10 +1636,10 @@ async function generateAiReport(
       const data = { ok: true, provider: p.name, text };
       aiCache.set(cacheKey, { at: Date.now(), data });
       return data;
-    } catch { /* 自动降级下一个免费通道 */ }
+    } catch { /* fallback to next */ }
   }
 
-  const data = { ok: true, provider: "规则引擎", text: buildRuleBasedAnalysis(report, clientEnv) };
+  const data = { ok: true, provider: "Rule Engine", text: buildRuleBasedAnalysis(report, clientEnv, lang) };
   aiCache.set(cacheKey, { at: Date.now(), data });
   return data;
 }
@@ -1663,23 +1779,24 @@ export async function handler(req: Request, env?: Record<string, unknown>): Prom
     try {
       const payload = await req.json();
       const targetIp = publicIp(payload?.ip);
-      if (!targetIp) return json({ ok: false, error: "invalid_ip", message: "缺少合法的目标 IP" }, 400);
+      if (!targetIp) return json({ ok: false, error: "invalid_ip", message: "Invalid IP address" }, 400);
+      const lang = normalizeLang(payload?.lang);
       const report = await lookup(targetIp, undefined, env);
-      return json(await generateAiReport(report, payload?.clientEnv || null, env));
+      return json(await generateAiReport(report, payload?.clientEnv || null, lang, env));
     } catch {
-      return json({ ok: false, error: "ai_failed", message: "AI 诊断失败，请稍后重试" }, 500);
+      return json({ ok: false, error: "ai_failed", message: "AI analysis failed" }, 500);
     }
   }
 
   if (req.method !== "GET") {
-    return json({ ok: false, error: "method_not_allowed", message: "仅支持 GET 查询或 POST AI 诊断" }, 405);
+    return json({ ok: false, error: "method_not_allowed", message: "Method not allowed" }, 405);
   }
 
   if (url.searchParams.get("action") === "geoaddr") {
     const lat = Number(url.searchParams.get("lat"));
     const lon = Number(url.searchParams.get("lon"));
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
-      return json({ ok: false, error: "invalid_coords", message: "缺少有效经纬度坐标" }, 400);
+      return json({ ok: false, error: "invalid_coords", message: "Invalid coordinates" }, 400);
     }
     const tz = url.searchParams.get("tz") || "";
     const jitter = url.searchParams.get("jitter") === "1";
@@ -1689,17 +1806,17 @@ export async function handler(req: Request, env?: Record<string, unknown>): Prom
 
   if (url.searchParams.get("feed") === "bgp") {
     try { return json(await lookupBgpFeed()); }
-    catch { return json({ ok: false, error: "upstream_unavailable", message: "BGP 路由流暂不可用" }, 502); }
+    catch { return json({ ok: false, error: "upstream_unavailable", message: "BGP feed unavailable" }, 502); }
   }
 
   const asnParam = url.searchParams.get("asn");
   if (asnParam !== null) {
     const asn = Number(String(asnParam).replace(/^AS/i, ""));
     if (!Number.isInteger(asn) || asn < 1 || asn > 4294967295) {
-      return json({ ok: false, error: "invalid_asn", message: "ASN 格式无效" }, 400);
+      return json({ ok: false, error: "invalid_asn", message: "Invalid ASN" }, 400);
     }
     try { return json(await lookupAsn(asn, url.searchParams.get("pfx"))); }
-    catch { return json({ ok: false, error: "upstream_unavailable", message: "ASN 数据源暂不可用" }, 502); }
+    catch { return json({ ok: false, error: "upstream_unavailable", message: "ASN lookup unavailable" }, 502); }
   }
 
   const q = url.searchParams.get("q");
@@ -1711,19 +1828,19 @@ export async function handler(req: Request, env?: Record<string, unknown>): Prom
     ip = publicIp(trimmed);
     if (!ip) {
       if (IPV4_RE.test(trimmed) || IPV6_RE.test(trimmed)) {
-        return json({ ok: false, error: "private_ip", message: "内网或保留地址无法检测" }, 400);
+        return json({ ok: false, error: "private_ip", message: "Private or reserved IP cannot be checked" }, 400);
       }
       if (DOMAIN_RE.test(trimmed)) {
         const resolved = await resolveDomain(trimmed);
         if (resolved) { ip = resolved; queriedDomain = trimmed; }
-        else return json({ ok: false, error: "domain_resolve_failed", message: `无法解析域名 ${trimmed}` }, 400);
+        else return json({ ok: false, error: "domain_resolve_failed", message: `Failed to resolve ${trimmed}` }, 400);
       } else {
-        return json({ ok: false, error: "invalid_ip", message: "请输入合法的 IPv4、IPv6 或域名" }, 400);
+        return json({ ok: false, error: "invalid_ip", message: "Invalid IPv4, IPv6, or domain" }, 400);
       }
     }
   } else {
     ip = clientIpFromHeaders(req);
-    if (!ip) return json({ ok: false, error: "ip_unavailable", message: "无法自动识别 IP，请手动输入" }, 422);
+    if (!ip) return json({ ok: false, error: "ip_unavailable", message: "Unable to detect client IP" }, 422);
   }
 
   try {
@@ -1731,6 +1848,6 @@ export async function handler(req: Request, env?: Record<string, unknown>): Prom
     const conn = connectionMetaFromReq(req);
     return json(conn ? { ...report, connection: conn } : report);
   } catch {
-    return json({ ok: false, error: "upstream_unavailable", message: "IP 数据源暂不可用，请稍后重试" }, 502);
+    return json({ ok: false, error: "upstream_unavailable", message: "Upstream IP services unavailable" }, 502);
   }
 }
