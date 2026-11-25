@@ -166,9 +166,3 @@ curl -X POST "\[https://ipspot.org/functions/v1/app?action=ai](https://ipspot.or
 
 
 
-\## 联系方式
-
-
-
-邮箱：\[hezhanleiok@gmail.com](mailto:hezhanleiok@gmail.com)
-
