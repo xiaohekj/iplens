@@ -3,17 +3,17 @@
         xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://ipspot.org/</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://ipspot.org/" />
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://ipspot.org/zh/" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://ipspot.org/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://ipspot.org/en/" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://ipspot.org/" />
     <lastmod>2026-11-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://ipspot.org/zh/</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://ipspot.org/" />
-    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://ipspot.org/zh/" />
+    <loc>https://ipspot.org/en/</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://ipspot.org/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://ipspot.org/en/" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://ipspot.org/" />
     <lastmod>2026-11-25</lastmod>
     <changefreq>daily</changefreq>

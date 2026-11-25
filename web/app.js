@@ -235,9 +235,10 @@ const I18N = {
     "api.placeholder": "IP or domain (leave blank for your IP)",
     "api.requesting": "Requesting…",
     "footer.privacy": "Privacy & Disclaimer",
+    "footer.contact": "Contact",
     "privacy.title": "Privacy Policy & Disclaimer",
     "privacy.p1": "IPSpot (ipspot.org) queries public IP intelligence and OpenStreetMap coordinates in real time. Browser fingerprinting and WebRTC probes run locally in your browser without storing personal identity data.",
-    "privacy.p2": "This site uses Google Analytics for anonymous traffic measurement and may display Google AdSense ads. Diagnostics are for network reference only. Contact: hezhanleiok@gmail.com",
+    "privacy.p2": "This site uses Google Analytics for anonymous traffic measurement and may display Google AdSense ads. Diagnostics are for network reference only. For inquiries, use the Contact link in the footer.",
     "score.purity": "Purity Score: <b>{n} / 100</b>",
     "score.cleanBaseline": "Clean baseline",
     "signals.count": "{n} checks",
@@ -541,9 +542,10 @@ const I18N = {
     "api.placeholder": "IP 或域名（留空查本机）",
     "api.requesting": "请求中…",
     "footer.privacy": "隐私与免责声明",
-    "privacy.title": "隐私政策与免責聲明",
+    "footer.contact": "联系方式",
+    "privacy.title": "隐私政策与免责声明",
     "privacy.p1": "IPSpot (ipspot.org) 仅实时查询公网 IP 公开情报与 OpenStreetMap 公开地理坐标；指纹检测与 WebRTC 探测均在本地浏览器完成，不存储个人身份信息。",
-    "privacy.p2": "本站使用 Google Analytics 统计匿名访问，并可能接入 Google AdSense 广告服务。结果仅供网络诊断参考，联系邮箱：hezhanleiok@gmail.com",
+    "privacy.p2": "本站使用 Google Analytics 统计匿名访问，并可能接入 Google AdSense 广告服务。结果仅供网络诊断参考，如需联系请使用页脚的「联系方式」。",
     "score.purity": "综合纯净分：<b>{n} / 100</b>",
     "score.cleanBaseline": "基线纯净",
     "signals.count": "{n} 项检测",
@@ -607,7 +609,7 @@ const I18N = {
     "bd.baseline_mobile": ["网络基线", "移动蜂窝 CGNAT 共享出口"],
     "bd.baseline_business": ["网络基线", "企业/机构商用网络"],
     "bd.baseline_dual_isp": ["网络基线", "双 ISP / 广播托管段"],
-    "bd.baseline_datacenter": ["网络基线", "数据中心 / クラウド回線"],
+    "bd.baseline_datacenter": ["网络基线", "数据中心 / 云主机"],
     "bd.baseline_unknown": ["网络基线", "归属证据不足审慎基线"],
     "bd.radar_bot": ["ASN 机器流量", "Radar 实测该 ASN 机器流量占比 {bot}%"],
     "bd.broadcast": ["跨区广播", "注册国 {reg} ≠ 定位国 {loc}"],
@@ -616,7 +618,7 @@ const I18N = {
     "bd.proxy": ["代理节点", "命中公开代理或转发节点"],
     "bd.dc_proxy": ["机房代理叠加", "机房 + 代理复合高危特征"],
     "bd.abuseipdb": ["AbuseIPDB 举报", "近 90 天被举报 {reports} 次（置信度 {conf}%）"],
-    "bd.abuse_generic": ["滥用与威胁", "命中滥用或威脅情报源"],
+    "bd.abuse_generic": ["滥用与威胁", "命中滥用或威胁情报源"],
     "bd.crawler": ["爬虫来源", "命中商业/抓取爬虫库"],
     "bd.vulns": ["暴露面漏洞", "Shodan 发现 {count} 个已知漏洞特征"],
   },
@@ -847,9 +849,10 @@ const I18N = {
     "api.placeholder": "IP 或網域（留空查本機）",
     "api.requesting": "請求中…",
     "footer.privacy": "隱私與免責聲明",
+    "footer.contact": "聯絡方式",
     "privacy.title": "隱私權政策與免責聲明",
     "privacy.p1": "IPSpot (ipspot.org) 僅即時查詢公網 IP 公開情報與 OpenStreetMap 公開地理座標；指紋檢測與 WebRTC 探測均在本機瀏覽器完成，不儲存個人身份資訊。",
-    "privacy.p2": "本站使用 Google Analytics 統計匿名造訪，並可能接入 Google AdSense 廣告服務。結果僅供網路診斷參考，聯繫信箱：hezhanleiok@gmail.com",
+    "privacy.p2": "本站使用 Google Analytics 統計匿名造訪，並可能接入 Google AdSense 廣告服務。結果僅供網路診斷參考，如需聯繫請使用頁尾的「聯絡方式」。",
     "score.purity": "綜合純淨分：<b>{n} / 100</b>",
     "score.cleanBaseline": "基線純淨",
     "signals.count": "{n} 項檢測",
@@ -1153,9 +1156,10 @@ const I18N = {
     "api.placeholder": "IP またはドメイン（空欄で自分の IP）",
     "api.requesting": "リクエスト中…",
     "footer.privacy": "プライバシー・免責事項",
+    "footer.contact": "お問い合わせ",
     "privacy.title": "プライバシーポリシーと免責事項",
     "privacy.p1": "IPSpot (ipspot.org) は公開 IP 情報と OpenStreetMap 座標をリアルタイム参照します。ブラウザ指紋および WebRTC 検査は端末内で完結し、個人情報は保存しません。",
-    "privacy.p2": "当サイトは匿名アクセス解析に Google Analytics を利用し、Google AdSense 広告を掲載する場合があります。連絡先：hezhanleiok@gmail.com",
+    "privacy.p2": "当サイトは匿名アクセス解析に Google Analytics を利用し、Google AdSense 広告を掲載する場合があります。結果はネットワーク診断の参考情報です。お問い合わせはフッターの「お問い合わせ」をご利用ください。",
     "score.purity": "総合純度スコア：<b>{n} / 100</b>",
     "score.cleanBaseline": "クリーンなベースライン",
     "signals.count": "{n} 項目検査",
@@ -1234,18 +1238,17 @@ const I18N = {
   },
 };
 
-function isZhPath() {
-  return /^\/zh(\/|$)/.test(location.pathname);
+function isEnPath() {
+  return /^\/en(\/|$)/.test(location.pathname);
 }
 
 function resolveInitialLang() {
-  const pageDefault = document.documentElement.getAttribute("data-default-lang") || (isZhPath() ? "zh-CN" : "en");
+  const pageDefault = document.documentElement.getAttribute("data-default-lang") || (isEnPath() ? "en" : "zh-CN");
   try {
     const saved = localStorage.getItem(LANG_KEY);
-    if (pageDefault === "en" && (saved === "zh-TW" || saved === "ja")) return saved;
     if (pageDefault === "zh-CN" && (saved === "zh-TW" || saved === "ja")) return saved;
   } catch {}
-  return I18N[pageDefault] ? pageDefault : "en";
+  return I18N[pageDefault] ? pageDefault : "zh-CN";
 }
 
 const state = {
@@ -1352,13 +1355,11 @@ function handleLanguageChange(nextLang) {
   if (!I18N[nextLang]) return;
   try { localStorage.setItem(LANG_KEY, nextLang); } catch {}
   const hash = location.hash || "";
+  const targetPath = nextLang === "en" ? "/en/" : "/";
+  const currentPath = location.pathname.replace(/\/index\.html$/, "/");
 
-  if (nextLang === "zh-CN" && !isZhPath()) {
-    location.href = `/zh/${hash}`;
-    return;
-  }
-  if (nextLang === "en" && isZhPath()) {
-    location.href = `/${hash}`;
+  if (currentPath !== targetPath) {
+    location.href = `${targetPath}${hash}`;
     return;
   }
 

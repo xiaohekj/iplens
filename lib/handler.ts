@@ -1394,17 +1394,20 @@ function buildRuleBasedAnalysis(report: Report, clientEnv: any, lang: Lang): str
 
   if (lang === "en") {
     const verdict = fraud <= 18 && isRes ? "Clean residential IP with low risk" :
-      fraud <= 35 ? "Low-to-moderate risk IP suitable for standard access" :
+      fraud <= 35 && (isRes || bot < 80) ? "Low-to-moderate risk IP suitable for standard access" :
       fraud <= 55 ? `Neutral risk ${report.type.code} IP (${bot}% bot traffic on ASN)` :
       `High-risk ${report.type.code} IP (${fraud}% risk score)`;
-    const aiPlat = fraud <= 20 && isRes ? "Highly recommended — minimal verification friction" :
-      fraud <= 45 && bot < 80 ? "Usable — occasional CAPTCHA or rate checks" :
-      "Not recommended — high chance of CAPTCHA, downgrade, or blocks";
+    const aiPlat = isRes
+      ? (fraud <= 20 ? "Highly recommended — minimal verification friction" :
+        fraud <= 45 ? "Usable — occasional CAPTCHA or rate checks" :
+        "Not recommended — high risk signals on this IP")
+      : (fraud <= 45 && bot < 80 ? "Usable — occasional CAPTCHA or rate checks" :
+        "Not recommended — high chance of CAPTCHA, downgrade, or blocks");
     const biz = fraud <= 18 && isRes && isNative ? "Suitable for social accounts, e-commerce, and payments" :
       fraud <= 38 && isRes ? "Browsing & light registration only" :
       "Not recommended — avoid account sign-ups, ads, or payment checkout";
     const tip = envWarn.length ? "Align local timezone/language with exit IP and verify WebRTC." :
-      fraud > 35 ? "Switch to a clean native residential IP for sensitive workflows." :
+      fraud > 35 || (!isRes && bot >= 80) ? "Switch to a clean native residential IP for sensitive workflows." :
       "Environment looks clean; keep current network and timezone settings.";
     return [
       `- **Verdict**: ${verdict} (Risk ${fraud}%, Purity ${report.scores.trust}/100)`,
@@ -1416,16 +1419,19 @@ function buildRuleBasedAnalysis(report: Report, clientEnv: any, lang: Lang): str
 
   if (lang === "zh-TW") {
     const verdict = fraud <= 18 && isRes ? "純淨原生家寬 IP，風控風險極低" :
-      fraud <= 35 ? "低風險網路節點，常規存取穩定" :
+      fraud <= 35 && (isRes || bot < 80) ? "低風險網路節點，常規存取穩定" :
       fraud <= 55 ? `中性風險 ${report.type.label}（所屬 ASN 機器流量 ${bot}%）` :
       `高風險 ${report.type.label}（風險係數 ${fraud}%）`;
-    const aiPlat = fraud <= 20 && isRes ? "高度推薦，觸發驗證機率極低" :
-      fraud <= 45 && bot < 80 ? "可用，偶發人機驗證或降速" :
-      "不推薦，機房或高 Bot 特徵易觸發降智與攔截";
+    const aiPlat = isRes
+      ? (fraud <= 20 ? "高度推薦，觸發驗證機率極低" :
+        fraud <= 45 ? "可用，偶發人機驗證或降速" :
+        "不推薦，該 IP 自身風險信號偏高")
+      : (fraud <= 45 && bot < 80 ? "可用，偶發人機驗證或降速" :
+        "不推薦，機房或高 Bot 特徵易觸發降智與攔截");
     const biz = fraud <= 18 && isRes && isNative ? "適合社群養號、跨境電商與支付場景" :
       fraud <= 38 && isRes ? "僅建議日常瀏覽，謹慎用於敏感註冊" :
       "不推薦，請勿用於註冊、廣告投放或支付結帳";
-    const tip = fraud > 35 ? "敏感業務建議切換至乾淨的原生住宅家寬 IP。" : "目前環境良好，保持本機時區與出口地區一致即可。";
+    const tip = fraud > 35 || (!isRes && bot >= 80) ? "敏感業務建議切換至乾淨的原生住宅家寬 IP。" : "目前環境良好，保持本機時區與出口地區一致即可。";
     return [
       `- **綜合定性**：${verdict}（風險 ${fraud}% / 純淨分 ${report.scores.trust}）`,
       `- **AI 平台 (ChatGPT/Claude)**：${aiPlat}`,
@@ -1436,16 +1442,19 @@ function buildRuleBasedAnalysis(report: Report, clientEnv: any, lang: Lang): str
 
   if (lang === "ja") {
     const verdict = fraud <= 18 && isRes ? "クリーンなネイティブ住宅IP（低リスク）" :
-      fraud <= 35 ? "標準利用に適した低〜中リスクIP" :
+      fraud <= 35 && (isRes || bot < 80) ? "標準利用に適した低〜中リスクIP" :
       fraud <= 55 ? `中立リスクIP（ASNのBot比率 ${bot}%）` :
       `高リスクIP（リスク係数 ${fraud}%）`;
-    const aiPlat = fraud <= 20 && isRes ? "強く推奨 — 認証要求の発生率は極めて低い" :
-      fraud <= 45 && bot < 80 ? "利用可能 — 時々CAPTCHAが表示される可能性あり" :
-      "非推奨 — Bot判定による制限やブロックの可能性が高い";
+    const aiPlat = isRes
+      ? (fraud <= 20 ? "強く推奨 — 認証要求の発生率は極めて低い" :
+        fraud <= 45 ? "利用可能 — 時々CAPTCHAが表示される可能性あり" :
+        "非推奨 — このIP自体のリスク指標が高い")
+      : (fraud <= 45 && bot < 80 ? "利用可能 — 時々CAPTCHAが表示される可能性あり" :
+        "非推奨 — Bot判定による制限やブロックの可能性が高い");
     const biz = fraud <= 18 && isRes && isNative ? "SNS運用・EC・決済用途に適しています" :
       fraud <= 38 && isRes ? "通常閲覧向け、新規登録は慎重に" :
       "非推奨 — アカウント登録や決済には使用しないでください";
-    const tip = fraud > 35 ? "重要な業務にはクリーンな住宅IPへの切り替えを推奨します。" : "環境は良好です。現在のネットワーク設定を維持してください。";
+    const tip = fraud > 35 || (!isRes && bot >= 80) ? "重要な業務にはクリーンな住宅IPへの切り替えを推奨します。" : "環境は良好です。現在のネットワーク設定を維持してください。";
     return [
       `- **総合判定**：${verdict}（リスク ${fraud}% / 純度 ${report.scores.trust}/100）`,
       `- **AI プラットフォーム**：${aiPlat}`,
@@ -1455,17 +1464,20 @@ function buildRuleBasedAnalysis(report: Report, clientEnv: any, lang: Lang): str
   }
 
   const verdict = fraud <= 18 && isRes ? "纯净原生家宽 IP，风控风险极低" :
-    fraud <= 35 ? "低风险网络节点，常规访问稳定" :
+    fraud <= 35 && (isRes || bot < 80) ? "低风险网络节点，常规访问稳定" :
     fraud <= 55 ? `中性风险 ${report.type.label}（所属 ASN 机器流量 ${bot}%）` :
     `高风险 ${report.type.label}（风险系数 ${fraud}%）`;
-  const aiPlat = fraud <= 20 && isRes ? "高度推荐，触发验证概率极低" :
-    fraud <= 45 && bot < 80 ? "基本可用，偶发人机校验或限速" :
-    "不推荐，高 Bot 比例易触发降智、验证或拦截";
+  const aiPlat = isRes
+    ? (fraud <= 20 ? "高度推荐，触发验证概率极低" :
+      fraud <= 45 ? "基本可用，偶发人机校验或限速" :
+      "不推荐，该 IP 自身风险信号偏高")
+    : (fraud <= 45 && bot < 80 ? "基本可用，偶发人机校验或限速" :
+      "不推荐，机房或高 Bot 比例易触发降智、验证或拦截");
   const biz = fraud <= 18 && isRes && isNative ? "适合社媒养号、跨境店铺与支付场景" :
     fraud <= 38 && isRes ? "仅建议日常浏览，谨慎用于敏感注册" :
     "不推荐，请勿用于账号注册、起号或支付结账";
   const tip = envWarn.length ? `建议处理本机环境偏差（${envWarn.join("、")}），敏感业务请换原生家宽 IP。` :
-    fraud > 35 ? "普通浏览可用；涉及注册或支付建议更换干净的原生家宽 IP。" :
+    fraud > 35 || (!isRes && bot >= 80) ? "普通浏览可用；涉及注册或支付建议更换干净的原生家宽 IP。" :
     "当前网络纯净度良好，保持出口地区与本地时区一致即可。";
 
   return [
@@ -1484,6 +1496,7 @@ function buildAiPrompts(lang: Lang, report: Report, clientEnv: any): { system: s
     isNative: report.location.isNative,
     registeredCountry: report.location.registeredCountryCode,
     networkType: report.type.code,
+    residential: report.type.residential,
     company: report.company.name,
     riskScore: report.scores.fraud,
     purityScore: report.scores.trust,
@@ -1499,24 +1512,24 @@ function buildAiPrompts(lang: Lang, report: Report, clientEnv: any): { system: s
 
   if (lang === "en") {
     return {
-      system: "You are a strict IP risk analyst. Reply in concise English with exactly 4 Markdown bullet points (under 90 words total). Never contradict yourself: if riskScore >= 31 or botPct >= 70, NEVER call it 'high trust'. Use clear verdicts like 'Highly recommended', 'Browsing only', or 'Not recommended'.",
+      system: "You are a rigorous IP risk analyst. Reply in concise English with exactly 4 Markdown bullet points (under 90 words total). Judge the IP primarily by its own riskScore, abuse reports and concrete proxy/VPN/Tor/datacenter signals. botPct is ASN-level background traffic, not an IP-specific verdict. Residential exception: when networkType is 'residential' and riskScore <= 45, never say 'Not recommended' merely because botPct is high; use 'Highly recommended' for riskScore <= 20 and 'Usable' for 21-45. For residential IPs, only say 'Not recommended' when riskScore >= 46 or when concrete abuse/proxy/Tor/datacenter signals exist. For non-residential IPs, high botPct (>=80) with riskScore 21-45 may still justify 'Not recommended' or 'Browsing only'. Never call a riskScore >= 31 IP 'high trust'. Avoid ambiguous phrases like 'low, high risk'.",
       user: `Analyze this IP intelligence JSON and output exactly 4 bullets: 1.**Verdict** 2.**AI Platforms (ChatGPT/Claude)** 3.**Commerce / Social / Payments** 4.**Recommendation**.\n${payload}`,
     };
   }
   if (lang === "zh-TW") {
     return {
-      system: "你是嚴謹的 IP 風控專家，請用極簡繁體中文輸出恰好 4 條 Markdown 列表（總字數 150 字內）。嚴禁前後矛盾：當 riskScore >= 31 或 botPct >= 70 時絕不可稱為「高信任度」；嚴禁用孤立的「低，風險高」造成誤解，請直接寫「不推薦（高 Bot 風險）」「僅限普通瀏覽」「高度推薦」。",
+      system: "你是嚴謹的 IP 風控專家，請用極簡繁體中文輸出恰好 4 條 Markdown 列表（總字數 150 字內）。判定必須以該 IP 自身的 riskScore、abuse 檢舉以及代理/VPN/Tor/機房等具體信號為主；botPct 只是該 ASN 的整體機器流量背景，不能單獨作為否定家寬 IP 的依據。家寬例外：當 networkType 為 'residential' 且 riskScore <= 45 時，不得僅因 botPct 高而寫「不推薦」；riskScore <= 20 寫「高度推薦」，21-45 寫「基本可用」。對家寬 IP，只有 riskScore >= 46，或存在明確的濫用/代理/Tor/機房信號時，才可寫「不推薦」。對非家寬 IP，botPct >= 80 且 riskScore 21-45 時，仍可判「不推薦」或「僅限普通瀏覽」。嚴禁前後矛盾：riskScore >= 31 不得稱為「高信任度」；嚴禁「低，風險高」這類歧義表達。",
       user: `根據以下 IP 情報輸出 4 條精簡診斷：1.**綜合定性** 2.**AI 平台 (ChatGPT/Claude)** 3.**跨境 / 社群 / 支付** 4.**實操建議**。\n${payload}`,
     };
   }
   if (lang === "ja") {
     return {
-      system: "あなたは厳格なIPリスクアナリストです。簡潔な日本語で4つのMarkdown箇条書き（合計160文字以内）のみを出力してください。riskScore >= 31 または botPct >= 70 の場合は決して「高信頼」と書かず、「非推奨」「通常閲覧のみ」「強く推奨」など明確な表現を使ってください。",
+      system: "あなたは厳格なIPリスクアナリストです。簡潔な日本語で4つのMarkdown箇条書き（合計160文字以内）のみを出力してください。判定はこのIP自身の riskScore、abuse 報告、プロキシ/VPN/Tor/データセンターなどの具体的なシグナルを主軸にしてください。botPct は ASN 全体の機械トラフィック背景であり、住宅IPを否定する単独根拠にはできません。住宅IP例外：networkType が 'residential' かつ riskScore <= 45 の場合、botPct が高いだけで「非推奨」と書かないでください。riskScore <= 20 は「強く推奨」、21-45 は「利用可能」とします。住宅IPの場合、riskScore >= 46、または明確な abuse/プロキシ/Tor/データセンターのシグナルがある場合のみ「非推奨」と書けます。非住宅IPでは、botPct >= 80 かつ riskScore 21-45 の場合、「非推奨」または「通常閲覧のみ」と判断しても構いません。riskScore >= 31 のIPを「高信頼」と呼ばないでください。",
       user: `以下のIP情報から4項目を診断してください：1.**総合判定** 2.**AI プラットフォーム (ChatGPT/Claude)** 3.**EC / SNS / 決済** 4.**推奨アクション**。\n${payload}`,
     };
   }
   return {
-    system: "你是严谨的 IP 风控专家，请用极简简体中文输出恰好 4 条 Markdown 列表（总字数 150 字内，禁止废话）。严格遵守两条规则：1.严禁前后矛盾，当 riskScore >= 31 或 botPct >= 70 时绝不可称为“高信任度”，31-50 分定性为中性/中等风险；2.严禁写出“低，风险高”这类易产生歧义的短语，必须直接写“不推荐（高 Bot 风险）”“仅限普通浏览”“基本可用”“高度推荐”。",
+    system: "你是严谨的 IP 风控专家，请用极简简体中文输出恰好 4 条 Markdown 列表（总字数 150 字内，禁止废话）。判定必须以该 IP 自身的 riskScore、abuse 举报以及代理/VPN/Tor/机房等具体信号为主；botPct 只是该 ASN 的整体机器流量背景，不能单独作为否定家宽 IP 的依据。家宽例外：当 networkType 为 'residential' 且 riskScore <= 45 时，不得仅因 botPct 高而写“不推荐”；riskScore <= 20 写“高度推荐”，21-45 写“基本可用”。对家宽 IP，只有 riskScore >= 46，或存在明确的滥用/代理/Tor/机房信号时，才可写“不推荐”。对非家宽 IP，botPct >= 80 且 riskScore 21-45 时，仍可判“不推荐”或“仅限普通浏览”。禁止前后矛盾：riskScore >= 31 不得称为“高信任度”；禁止“低，风险高”这类歧义表达。",
     user: `根据以下真实 IP 情报输出 4 条简短诊断：1.**综合定性** 2.**AI 平台 (ChatGPT/Claude)** 3.**跨境 / 社媒 / 支付** 4.**实操建议**。\n${payload}`,
   };
 }

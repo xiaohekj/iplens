@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-default-lang="en">
+<head>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-5EKHNRYENC"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-5EKHNRYENC');
+  </script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>IPSpot · Free IP Purity Checker — Residential &amp; Native IP · Fraud Score · Fingerprint Test</title>
+  <meta name="description" content="IPSpot (ipspot.org) is a free online IP purity and privacy diagnostic tool: detect residential vs datacenter IPs, native vs broadcast routing, Cloudflare Radar human/bot traffic ratio, AbuseIPDB fraud risk score, real street address from IP, FingerprintJS browser fingerprint, DNS/WebRTC leaks, and live ASN monitoring." />
+  <meta name="keywords" content="IPSpot,IP lookup,IP purity checker,residential IP check,datacenter IP check,native IP,broadcast IP,IP fraud score,human bot ratio,browser fingerprint test,DNS leak test,WebRTC leak test,ASN monitor,real address from IP,ipspot.org" />
+  <meta name="author" content="IPSpot" />
+  <meta name="theme-color" id="meta-theme-color" content="#070B14" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <link rel="canonical" href="https://ipspot.org/en/" />
+  <link rel="alternate" hreflang="en" href="https://ipspot.org/en/" />
+  <link rel="alternate" hreflang="zh-CN" href="https://ipspot.org/" />
+  <link rel="alternate" hreflang="x-default" href="https://ipspot.org/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="IPSpot" />
+  <meta property="og:title" content="IPSpot · Free IP Purity Checker &amp; Browser Fingerprint Diagnostics" />
+  <meta property="og:description" content="Identify residential vs datacenter IPs, native vs broadcast routing, Cloudflare Radar human/bot ratio, fraud risk score, real street address, browser fingerprint, and DNS/WebRTC leaks." />
+  <meta property="og:url" content="https://ipspot.org/en/" />
+  <meta property="og:image" content="https://ipspot.org/og-image.jpg" />
+  <meta property="og:image:type" content="image/jpeg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="675" />
+  <meta property="og:image:alt" content="IPSpot (ipspot.org) IP Purity Radar" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:locale:alternate" content="zh_CN" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="IPSpot · Free IP Purity Checker &amp; Browser Fingerprint Test" />
+  <meta name="twitter:description" content="Residential/native IP check, Cloudflare Radar human/bot ratio, fraud score, real street address, FingerprintJS test, and DNS/WebRTC leak checks." />
+  <meta name="twitter:image" content="https://ipspot.org/og-image.jpg" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="preconnect" href="https://flagcdn.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/styles.css" />
+  <script>
+    (function(){
+      try {
+        var t = localStorage.getItem('ipspot-theme');
+        if (t === 'light' || t === 'dark') {
+          document.documentElement.setAttribute('data-theme', t);
+          var m = document.getElementById('meta-theme-color');
+          if (m) m.setAttribute('content', t === 'light' ? '#F5F7FA' : '#070B14');
+        }
+      } catch(e){}
+    })();
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@4/dist/fp.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script defer src="/app.js"></script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebApplication",
+        "@id": "https://ipspot.org/en/#app",
+        "name": "IPSpot",
+        "alternateName": "IPSpot IP Intelligence Radar",
+        "url": "https://ipspot.org/en/",
+        "description": "Free online IP purity and browser fingerprint diagnostics: residential vs datacenter classification, native vs broadcast verification, Cloudflare Radar human/bot ratio, AbuseIPDB fraud scoring, real street address lookup, FingerprintJS v4, DNS & WebRTC leak tests, and live ASN monitoring.",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "Any",
+        "inLanguage": ["en", "zh-CN", "zh-TW", "ja"],
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "featureList": [
+          "Multi-source IP geolocation cross-check",
+          "Authoritative RIR native vs broadcast IP verification",
+          "Residential ISP vs datacenter hosting classification",
+          "Cloudflare Radar real-world ASN human vs bot traffic ratio",
+          "AbuseIPDB & Shodan exposure risk scoring",
+          "Real street address lookup from IP coordinates",
+          "FingerprintJS v4 & Canvas/WebGL/Audio browser fingerprint test",
+          "32-char random subdomain DNS leak & multi-STUN WebRTC leak tests",
+          "RIPE RIS Live global ASN / BGP route monitor",
+          "AI IP risk diagnosis & open JSON API"
+        ]
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://ipspot.org/en/#site",
+        "name": "IPSpot",
+        "url": "https://ipspot.org/en/",
+        "inLanguage": "en",
+        "publisher": { "@id": "https://ipspot.org/en/#app" },
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": "https://ipspot.org/en/#ip={search_term_string}",
+          "query-input": "required name=search_term_string"
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "@id": "https://ipspot.org/en/#faq",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "How does IPSpot distinguish a native residential IP from a datacenter IP?",
+            "acceptedAnswer": { "@type": "Answer", "text": "IPSpot aggregates MaxMind, ipapi.is, ipquery.io, ipwho.is, ip-api.com, Shodan, AbuseIPDB, and official RIR/RDAP registries. It compares the RIR registered country against physical geolocation to verify native vs broadcast routing, while checking ASN types, rDNS patterns, and abuse history." }
+          },
+          {
+            "@type": "Question",
+            "name": "Where does the Human vs Bot traffic ratio come from?",
+            "acceptedAnswer": { "@type": "Answer", "text": "IPSpot queries Cloudflare Radar's 7-day HTTP bot classification statistics for the target IP's ASN to show real-world human vs automated traffic proportions." }
+          },
+          {
+            "@type": "Question",
+            "name": "How is the real street address under the map generated?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Using the IP's latitude and longitude, IPSpot performs reverse geocoding via OpenStreetMap Nominatim and Photon to retrieve real street, city, state, country, postal code, and timezone data in the same area." }
+          },
+          {
+            "@type": "Question",
+            "name": "How do the browser fingerprint and DNS/WebRTC leak checks work?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Browser fingerprinting combines FingerprintJS v4 with Canvas, WebGL, Audio, fonts, and OS/hardware checks locally in your browser. DNS leak detection probes 32-character random subdomains to bypass caches, while WebRTC probes multiple global STUN servers." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <noscript>
+    <div style="padding:24px;max-width:720px;margin:0 auto;">
+      <h1>IPSpot · Free IP Purity Checker &amp; Browser Fingerprint Diagnostics</h1>
+      <p>IPSpot (ipspot.org) detects native vs broadcast IPs, residential vs datacenter networks, Cloudflare Radar human/bot traffic ratios, real street addresses, browser fingerprints, DNS/WebRTC leaks, and live ASN routes. Please enable JavaScript to run live diagnostics.</p>
+    </div>
+  </noscript>
+  <div class="aurora" aria-hidden="true"></div>
+
+  <!-- ============ TOP NAV ============ -->
+  <nav class="nav" id="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="#ip" data-route="query" aria-label="IPSpot Home">
+        <svg class="brand-mark" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="nbBg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#111C35"/><stop offset="100%" stop-color="#090E1C"/></linearGradient>
+            <linearGradient id="nbPin" x1="15%" y1="0%" x2="85%" y2="100%"><stop offset="0%" stop-color="#38BDF8"/><stop offset="55%" stop-color="#6366F1"/><stop offset="100%" stop-color="#8B5CF6"/></linearGradient>
+            <linearGradient id="nbDot" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#6EE7B7"/><stop offset="100%" stop-color="#22D3EE"/></linearGradient>
+          </defs>
+          <rect x="0.6" y="0.6" width="38.8" height="38.8" rx="10.5" fill="url(#nbBg)" stroke="#38BDF8" stroke-opacity="0.3" stroke-width="1.2"/>
+          <path d="M20 7.5C13.8 7.5 8.8 12.4 8.8 18.45C8.8 25.55 17.75 32.1 19.45 33.25C19.78 33.48 20.22 33.48 20.55 33.25C22.25 32.1 31.2 25.55 31.2 18.45C31.2 12.4 26.2 7.5 20 7.5Z" fill="url(#nbPin)" fill-opacity="0.18" stroke="url(#nbPin)" stroke-width="2.4" stroke-linejoin="round"/>
+          <circle cx="20" cy="18.2" r="5.6" fill="#0B1120" stroke="#38BDF8" stroke-opacity="0.35" stroke-width="1"/>
+          <circle cx="20" cy="18.2" r="3" fill="url(#nbDot)"/>
+        </svg>
+        <span class="brand-word"><strong>IP<span>Spot</span></strong><em data-i18n="brand.sub">IP Intelligence Radar</em></span>
+      </a>
+
+      <div class="nav-links" role="navigation" aria-label="Main navigation">
+        <a href="#ip" data-route="query" data-nav data-i18n="nav.query">IP Check</a>
+        <a href="#fp" data-route="fp" data-nav data-i18n="nav.fp">Fingerprint</a>
+        <a href="#asn" data-route="asn" data-nav><span data-i18n="nav.asn">ASN Live</span><i class="nav-live" aria-hidden="true"></i></a>
+        <a href="#dns" data-route="dns" data-nav data-i18n="nav.dns">DNS Leak</a>
+        <a href="#webrtc" data-route="webrtc" data-nav data-i18n="nav.webrtc">WebRTC</a>
+        <a href="#api" data-route="api" data-nav data-i18n="nav.api">Open API</a>
+      </div>
+
+      <div class="nav-controls">
+        <div class="lang-switch" title="Language">
+          <svg class="lang-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+          <select id="lang-select" class="lang-select" aria-label="Select language">
+            <option value="en" selected>English</option>
+            <option value="zh-CN">简体中文</option>
+            <option value="zh-TW">繁體中文</option>
+            <option value="ja">日本語</option>
+          </select>
+        </div>
+
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle theme" title="Toggle theme">
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <span class="theme-label" id="theme-label">Light</span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ============ VIEW: IP QUERY ============ -->
+  <section class="view" id="view-query" data-view="query">
+    <header class="hero" id="top">
+      <div class="radar-bg" aria-hidden="true">
+        <svg viewBox="0 0 600 600" preserveAspectRatio="xMidYMid slice">
+          <defs>
+            <radialGradient id="rg" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#22d3ee" stop-opacity=".12"/>
+              <stop offset="60%" stop-color="#8b5cf6" stop-opacity=".06"/>
+              <stop offset="100%" stop-color="#000" stop-opacity="0"/>
+            </radialGradient>
+            <linearGradient id="sweep" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#22d3ee" stop-opacity="0"/>
+              <stop offset="100%" stop-color="#22d3ee" stop-opacity=".35"/>
+            </linearGradient>
+          </defs>
+          <circle cx="300" cy="300" r="290" fill="url(#rg)"/>
+          <g stroke="#3b82f6" stroke-opacity=".15" fill="none">
+            <circle cx="300" cy="300" r="70"/><circle cx="300" cy="300" r="130"/>
+            <circle cx="300" cy="300" r="190"/><circle cx="300" cy="300" r="250"/>
+            <path d="M300 10v580M10 300h580M95 95l410 410M505 95L95 505"/>
+          </g>
+          <g class="radar-sweep"><path d="M300 300 L300 20 A280 280 0 0 1 440 60 Z" fill="url(#sweep)"/></g>
+          <circle class="blip b1" cx="385" cy="180" r="3.5" fill="#22d3ee"/>
+          <circle class="blip b2" cx="200" cy="390" r="3" fill="#8b5cf6"/>
+          <circle class="blip b3" cx="430" cy="330" r="2.5" fill="#34d399"/>
+        </svg>
+      </div>
+      <div class="hero-inner">
+        <p class="eyebrow" data-i18n="hero.eyebrow">IP INTELLIGENCE · REAL-TIME THREAT RADAR</p>
+        <h1><span data-i18n="hero.title1">Uncover the True Identity</span><br /><span class="grad-text" data-i18n="hero.title2">Behind Every IP Address</span></h1>
+        <p class="hero-sub" data-i18n="hero.sub">Residential Check · Native/Broadcast · Risk Signals · Real Street Address · Human/Bot Ratio · Fingerprint</p>
+        <form class="search" id="search-form" autocomplete="off">
+          <div class="search-box">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="search-input" type="text" placeholder="Enter IPv4, IPv6, or domain (e.g. 1.1.1.1, openai.com)…" data-i18n-placeholder="hero.placeholder" aria-label="IP address or domain" spellcheck="false" />
+            <button class="btn btn-primary" id="search-btn" type="submit" data-i18n="hero.btn">Check</button>
+          </div>
+          <div class="search-meta">
+            <button class="chip chip-action" id="detect-me" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+              <span data-i18n="hero.detectMe">Detect My IP</span>
+            </button>
+            <button class="chip" type="button" data-example="8.8.8.8">8.8.8.8</button>
+            <button class="chip" type="button" data-example="1.1.1.1">1.1.1.1</button>
+            <div class="history" id="history" aria-label="Recent lookups"></div>
+          </div>
+        </form>
+      </div>
+    </header>
+
+    <main class="sheet">
+      <!-- Ad slot 1 (hidden by default) -->
+      <div class="ad-slot" id="ad-slot-top" hidden></div>
+
+      <!-- Loading & Error -->
+      <div class="state-box" id="loading" hidden>
+        <div class="spinner"></div>
+        <span data-i18n="state.loading">Scanning IP intelligence…</span>
+      </div>
+      <div class="state-box error" id="error" hidden>
+        <span id="error-msg">Lookup failed</span>
+        <button class="btn btn-ghost btn-sm" id="error-retry" type="button" data-i18n="state.retry">Retry</button>
+      </div>
+
+      <div id="report" hidden>
+        <!-- Top Identity Banner -->
+        <article class="card identity-banner">
+          <div class="identity-left">
+            <span class="flag-lg" id="r-flag">🌐</span>
+            <div class="identity-meta">
+              <div class="identity-ip-row">
+                <h2 class="ip-main mono" id="r-ip">—</h2>
+                <span class="mini-tag" id="r-domain" hidden></span>
+                <button class="icon-btn" id="copy-ip" type="button" title="Copy IP" aria-label="Copy IP"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+                <button class="icon-btn" id="share-link" type="button" title="Copy Share Link" aria-label="Copy Share Link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.6 6.8-4.2M8.6 13.4l6.8 4.2"/></svg></button>
+              </div>
+              <p class="identity-sub" id="r-geo-isp">—</p>
+              <div class="asset-tags" id="r-asset-tags" hidden></div>
+            </div>
+          </div>
+          <div class="identity-badges">
+            <span class="badge blue" id="r-version">IPv4</span>
+            <span class="badge" id="r-native-badge">—</span>
+            <span class="badge" id="r-type-badge">—</span>
+            <span class="badge" id="r-risk-badge">—</span>
+          </div>
+        </article>
+
+        <!-- Card 1: Core Attributes -->
+        <article class="card section-card kv-card">
+          <div class="kv-rows">
+            <div class="kv-row">
+              <div class="kv-k" data-i18n="kv.asn">ASN / Org</div>
+              <div class="kv-v">
+                <div class="val-line">
+                  <span class="mono strong-link" id="r-asn-org">—</span>
+                  <button class="toggle-btn" id="btn-asn-more" type="button" aria-expanded="false" title="Expand details">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                </div>
+                <div class="sub-line" id="r-company-brief">—</div>
+                <div class="collapse-box" id="asn-more" hidden>
+                  <div class="sub-kv"><span data-i18n="sub.company">Company</span><b id="r-company-name">—</b></div>
+                  <div class="sub-kv"><span data-i18n="sub.companyType">Org Type</span><b id="r-company-type">—</b></div>
+                  <div class="sub-kv"><span data-i18n="sub.domain">Website</span><b id="r-company-domain">—</b></div>
+                  <div class="sub-kv"><span data-i18n="sub.route">Route CIDR</span><b class="mono" id="r-route">—</b></div>
+                  <div class="sub-kv"><span data-i18n="sub.rdns">Reverse DNS</span><b class="mono" id="r-rdns">—</b></div>
+                  <div class="sub-kv"><span data-i18n="sub.netname">NetName / RIR</span><b id="r-netname">—</b></div>
+                  <div class="sub-kv"><span data-i18n="sub.abuse">Abuse Contact</span><b class="mono" id="r-abuse">—</b></div>
+                  <div class="sub-kv"><span data-i18n="sub.ports">Open Ports</span><b class="mono" id="r-ports">—</b></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="kv-row">
+              <div class="kv-k" data-i18n="kv.range">IP Range</div>
+              <div class="kv-v">
+                <div class="val-line wrap">
+                  <span class="mono" id="r-range">—</span>
+                  <span class="muted-sep" id="r-numeric-wrap"><span data-i18n="kv.numeric">Decimal</span> <code id="r-numeric">—</code></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="kv-row">
+              <div class="kv-k" data-i18n="kv.source">IP Origin</div>
+              <div class="kv-v"><span class="pill" id="r-ip-source">—</span></div>
+            </div>
+
+            <div class="kv-row">
+              <div class="kv-k" data-i18n="kv.attr">IP Type</div>
+              <div class="kv-v"><span class="pill" id="r-ip-attr">—</span></div>
+            </div>
+
+            <div class="kv-row">
+              <div class="kv-k" data-i18n="kv.hb">Human / Bot</div>
+              <div class="kv-v">
+                <div class="hb-wrap">
+                  <div class="hb-bar">
+                    <div class="hb-human" id="hb-human-bar" style="width:50%"></div>
+                    <div class="hb-bot" id="hb-bot-bar" style="width:50%"></div>
+                  </div>
+                  <div class="hb-meta">
+                    <span class="hb-green">Human <b id="hb-human-pct">—</b></span>
+                    <span class="mini-tag" id="hb-source" hidden></span>
+                    <span class="hb-red">Bot <b id="hb-bot-pct">—</b></span>
+                    <button class="toggle-btn" id="btn-hb-more" type="button" aria-expanded="false" title="Environment comparison">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="collapse-box" id="hb-more" hidden>
+                  <table class="mini-table">
+                    <thead>
+                      <tr>
+                        <th data-i18n="hb.dim">Metric</th>
+                        <th data-i18n="hb.exitIp">Exit IP</th>
+                        <th data-i18n="hb.localEnv">Local Browser</th>
+                        <th data-i18n="hb.status">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody id="hb-table-body"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="kv-row">
+              <div class="kv-k" data-i18n="kv.location">Geolocation</div>
+              <div class="kv-v">
+                <div class="geo-stack" id="r-geo-list"></div>
+                <button class="btn-inline mt-6" id="btn-geo-more" type="button" hidden>Show more ▾</button>
+              </div>
+            </div>
+
+            <div class="kv-row">
+              <div class="kv-k" data-i18n="kv.score">IPSpot Score</div>
+              <div class="kv-v">
+                <div class="risk-row">
+                  <div class="risk-bar-wrap">
+                    <div class="risk-track"></div>
+                    <div class="risk-pin" id="fraud-marker">
+                      <span class="risk-bubble" id="fraud-marker-tip">0% Clean</span>
+                    </div>
+                    <div class="risk-ticks"><span>0</span><span>15</span><span>35</span><span>55</span><span>75</span><span>100</span></div>
+                    <div class="score-pos-line" id="r-ip-score"></div>
+                  </div>
+                  <button class="toggle-btn" id="btn-score-more" type="button" aria-expanded="false" title="Score breakdown">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                </div>
+                <div class="collapse-box" id="score-more" hidden>
+                  <ul class="score-list" id="r-breakdown"></ul>
+                </div>
+              </div>
+            </div>
+
+            <div class="kv-row">
+              <div class="kv-k" data-i18n="kv.ai">AI Diagnosis</div>
+              <div class="kv-v">
+                <div class="val-line">
+                  <button class="btn-inline accent" id="ai-run" type="button" data-i18n="btn.aiRun">✦ Run AI Diagnosis</button>
+                  <span class="mini-tag" id="ai-provider" hidden></span>
+                </div>
+                <div class="collapse-box ai-box" id="ai-expand" hidden>
+                  <div class="ai-loading" id="ai-loading" hidden><div class="spinner xs"></div><span data-i18n="ai.loading">Analyzing…</span></div>
+                  <div class="ai-content" id="ai-content"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="kv-row">
+              <div class="kv-k" data-i18n="kv.leak">Leak Check</div>
+              <div class="kv-v">
+                <div class="val-line">
+                  <span id="r-webrtc-brief">Checking…</span>
+                  <a class="btn-inline" href="#webrtc" data-route="webrtc" data-i18n="btn.details">Details</a>
+                </div>
+              </div>
+            </div>
+
+            <div class="kv-row">
+              <div class="kv-k" data-i18n="kv.fp">Fingerprint</div>
+              <div class="kv-v">
+                <div class="fp-brief-grid">
+                  <div class="sub-kv"><span>FingerprintJS</span><b class="mono" id="r-fp-id">—</b></div>
+                  <div class="sub-kv"><span>Canvas</span><b class="mono" id="r-fp-canvas">—</b></div>
+                  <div class="sub-kv"><span>WebGL</span><b class="mono clip" id="r-fp-webgl">—</b></div>
+                </div>
+                <div class="collapse-box" id="fp-more" hidden>
+                  <div class="sub-kv"><span data-i18n="sub.audio">Audio Hash</span><b class="mono" id="r-fp-audio">—</b></div>
+                  <div class="sub-kv"><span data-i18n="sub.os">OS &amp; Browser</span><b id="r-fp-os">—</b></div>
+                  <div class="sub-kv"><span data-i18n="sub.screen">Screen / DPR</span><b class="mono" id="r-fp-screen">—</b></div>
+                  <div class="sub-kv"><span data-i18n="sub.hw">CPU / Memory</span><b class="mono" id="r-fp-hw">—</b></div>
+                  <div class="sub-kv"><span data-i18n="sub.tz">Timezone / Lang</span><b class="mono" id="r-fp-tz">—</b></div>
+                  <div class="sub-kv"><span data-i18n="sub.bot">Automation</span><b id="r-fp-bot">—</b></div>
+                  <div class="fp-more-foot"><a href="#fp" data-route="fp" data-i18n="btn.openFp">Open full fingerprint report →</a></div>
+                </div>
+                <button class="row-expand-bar" id="btn-fp-more" type="button" aria-expanded="false" title="Expand fingerprint">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- Card 2: 6 Risk Signals -->
+        <article class="card section-card">
+          <div class="card-bar">
+            <h2 class="bar-title" data-i18n="card.signals">Risk Signals</h2>
+            <span class="coord-pill" id="signals-count">6 checks</span>
+          </div>
+          <div class="signals-grid" id="signals-grid"></div>
+        </article>
+
+        <!-- Card 3: Network Exits -->
+        <article class="card section-card">
+          <div class="card-bar">
+            <h2 class="bar-title" data-i18n="card.exit">Network Exits</h2>
+            <div class="card-bar-actions">
+              <button class="btn-inline" id="btn-ping-toggle" type="button" data-i18n="btn.latency">Latency ▾</button>
+              <button class="btn-inline" id="exit-run" type="button" data-i18n="btn.retest">Retest</button>
+            </div>
+          </div>
+          <div class="exit-pair">
+            <div class="exit-col">
+              <div class="exit-label" data-i18n="exit.v4">IPv4 Exit</div>
+              <div class="exit-val-row">
+                <span class="mono exit-ip" id="exit-v4-ip">Checking…</span>
+                <button class="icon-btn xs" id="exit-v4-copy" type="button" title="Copy IPv4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+              </div>
+              <div class="exit-sub" id="exit-v4-geo">—</div>
+            </div>
+            <div class="exit-col">
+              <div class="exit-label" data-i18n="exit.v6">IPv6 Exit</div>
+              <div class="exit-val-row">
+                <span class="mono exit-ip" id="exit-v6-ip">Checking…</span>
+                <button class="icon-btn xs" id="exit-v6-copy" type="button" title="Copy IPv6"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+              </div>
+              <div class="exit-sub" id="exit-v6-geo">—</div>
+            </div>
+          </div>
+          <div class="collapse-box" id="ping-panel" hidden>
+            <div class="ping-strip" id="latency-grid"></div>
+          </div>
+        </article>
+
+        <!-- Ad slot 2 (hidden by default) -->
+        <div class="ad-slot" id="ad-slot-mid" hidden></div>
+
+        <!-- Card 4: Registry & BGP History -->
+        <article class="card section-card">
+          <div class="card-bar">
+            <h2 class="bar-title" data-i18n="card.regHistory">Registry History</h2>
+            <button class="btn-inline" id="btn-bgp-more" type="button" aria-expanded="false" data-i18n="btn.bgpMore">BGP History ▾</button>
+          </div>
+          <div class="table-wrap">
+            <table class="clean-table">
+              <thead>
+                <tr>
+                  <th data-i18n="tbl.cidr">CIDR</th>
+                  <th data-i18n="tbl.rir">Registry</th>
+                  <th data-i18n="tbl.country">Country / Region</th>
+                  <th data-i18n="tbl.firstSeen">First Seen</th>
+                  <th data-i18n="tbl.lastSeen">Last Active</th>
+                </tr>
+              </thead>
+              <tbody id="r-reg-history">
+                <tr><td colspan="5" class="empty-td" data-i18n="tbl.empty">No records</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="collapse-box" id="bgp-more" hidden>
+            <div class="sub-title" data-i18n="card.bgpTitle">Historical BGP Announcements</div>
+            <div class="table-wrap">
+              <table class="clean-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="tbl.prefix">Prefix</th>
+                    <th data-i18n="tbl.originAsn">Origin ASN</th>
+                    <th data-i18n="tbl.firstAnn">First Seen</th>
+                    <th data-i18n="tbl.lastAnn">Last Seen</th>
+                  </tr>
+                </thead>
+                <tbody id="r-bgp-history"></tbody>
+              </table>
+            </div>
+          </div>
+        </article>
+
+        <!-- Card 5: Colorful Map & Real Geo Address -->
+        <article class="card section-card">
+          <div class="card-bar">
+            <h2 class="bar-title" data-i18n="card.mapGeo">Map &amp; Real Street Address</h2>
+            <div class="card-bar-actions">
+              <span class="mono coord-pill" id="r-coords-pill">—</span>
+              <a class="btn-inline" id="map-open" href="#" target="_blank" rel="noopener noreferrer" hidden data-i18n="btn.openMap">Open Map</a>
+            </div>
+          </div>
+          <div class="map-wrap">
+            <div id="map"></div>
+            <div class="map-fallback" id="map-fallback" hidden><span id="map-fallback-text">No coordinates</span></div>
+          </div>
+
+          <div class="geoaddr-block" id="geoaddr-block">
+            <div class="geoaddr-head">
+              <div class="geoaddr-title">
+                <span data-i18n="card.realAddr">Real Geo Address (Based on IP)</span>
+                <span class="mini-tag" id="ga-source">OSM</span>
+              </div>
+              <div class="card-bar-actions">
+                <button class="btn-inline" id="ga-refresh" type="button" data-i18n="btn.gaRefresh">Another Nearby</button>
+                <button class="btn-inline accent" id="ga-copy-all" type="button" data-i18n="btn.gaCopyAll">Copy All</button>
+              </div>
+            </div>
+            <div class="geoaddr-grid">
+              <button class="ga-item" type="button" data-ga="street"><span class="ga-k" data-i18n="ga.street">Street</span><b class="ga-v mono" id="ga-street">Loading…</b></button>
+              <button class="ga-item" type="button" data-ga="city"><span class="ga-k" data-i18n="ga.city">City</span><b class="ga-v" id="ga-city">—</b></button>
+              <button class="ga-item" type="button" data-ga="state"><span class="ga-k" data-i18n="ga.state">State / Province</span><b class="ga-v" id="ga-state">—</b></button>
+              <button class="ga-item" type="button" data-ga="country"><span class="ga-k" data-i18n="ga.country">Country</span><b class="ga-v" id="ga-country">—</b></button>
+              <button class="ga-item" type="button" data-ga="zip"><span class="ga-k" data-i18n="ga.zip">Postal Code</span><b class="ga-v mono" id="ga-zip">—</b></button>
+              <button class="ga-item" type="button" data-ga="tz"><span class="ga-k" data-i18n="ga.tz">Timezone</span><b class="ga-v mono" id="ga-tz">—</b></button>
+            </div>
+          </div>
+        </article>
+
+        <!-- Ad slot 3 (hidden by default) -->
+        <div class="ad-slot" id="ad-slot-bottom" hidden></div>
+
+        <!-- Collapsible SEO FAQ -->
+        <section class="seo-faq" aria-label="FAQ">
+          <details class="faq-box">
+            <summary data-i18n="faq.summary">How IPSpot Works &amp; Frequently Asked Questions</summary>
+            <div class="faq-grid">
+              <div>
+                <h3 data-i18n="faq.q1">Native, Broadcast &amp; Residential IP Detection</h3>
+                <p data-i18n="faq.a1">IPSpot cross-checks RIR registries (ARIN, RIPE, APNIC) against multi-source geolocation to verify native vs broadcast routing, combining ASN type, rDNS, Shodan, and AbuseIPDB to separate residential ISPs from datacenters.</p>
+              </div>
+              <div>
+                <h3 data-i18n="faq.q2">Human/Bot Traffic Ratio &amp; Purity Score</h3>
+                <p data-i18n="faq.a2">Powered by Cloudflare Radar 7-day ASN bot traffic statistics, combined with network baseline, abuse reports, and proxy signals for transparent 0–100% risk scoring.</p>
+              </div>
+              <div>
+                <h3 data-i18n="faq.q3">Browser Fingerprint &amp; Leak Tests</h3>
+                <p data-i18n="faq.a3">Integrates FingerprintJS v4, Canvas/WebGL/Audio/font hardware fingerprinting, 32-char random subdomain DNS leak detection, and multi-STUN WebRTC leak testing.</p>
+              </div>
+              <div>
+                <h3 data-i18n="faq.q4">Real Street Address &amp; Open API</h3>
+                <p data-i18n="faq.a4">Reverse-geocodes IP coordinates via OpenStreetMap to surface nearby street, city, state, postal code, and timezone details, plus a free JSON API for developers.</p>
+              </div>
+            </div>
+          </details>
+        </section>
+      </div>
+    </main>
+  </section>
+
+  <!-- ============ VIEW: FINGERPRINT ENVIRONMENT ============ -->
+  <section class="view" id="view-fp" data-view="fp" hidden>
+    <main class="sheet">
+      <div class="subview-head">
+        <h1 data-i18n="fp.title">Browser Fingerprint Diagnostics</h1>
+        <button class="btn btn-primary btn-sm" id="fp-page-run" type="button" data-i18n="btn.recollect">Recollect</button>
+      </div>
+      <article class="card section-card">
+        <div class="fp-hero-row">
+          <div>
+            <div class="exit-label" data-i18n="fp.visitorLabel">FingerprintJS Visitor ID</div>
+            <div class="mono fp-big-id" id="fp-page-id">—</div>
+          </div>
+          <div class="fp-score-pill" id="fp-page-score">—</div>
+        </div>
+        <div class="fp-verdict-line" id="fp-page-verdict">Checking…</div>
+      </article>
+      <article class="card section-card">
+        <div class="card-bar"><h2 class="bar-title" data-i18n="fp.coreTitle">Core Fingerprint Hashes</h2></div>
+        <div class="kv-rows compact" id="fp-page-core"></div>
+      </article>
+      <article class="card section-card">
+        <div class="card-bar"><h2 class="bar-title" data-i18n="fp.hwTitle">Hardware &amp; Display</h2></div>
+        <div class="kv-rows compact" id="fp-page-hardware"></div>
+      </article>
+      <article class="card section-card">
+        <div class="card-bar"><h2 class="bar-title" data-i18n="fp.envTitle">System, Timezone &amp; Connection</h2></div>
+        <div class="kv-rows compact" id="fp-page-env"></div>
+      </article>
+    </main>
+  </section>
+
+  <!-- ============ VIEW: ASN MONITOR ============ -->
+  <section class="view" id="view-asn" data-view="asn" hidden>
+    <main class="sheet">
+      <div class="subview-head">
+        <h1 data-i18n="asn.title">Live ASN / BGP Monitor</h1>
+        <div class="card-bar-actions">
+          <div class="conn-state" id="asn-conn"><i class="conn-dot"></i><span id="asn-conn-text">Disconnected</span></div>
+          <span class="asn-count"><b id="asn-count">0</b></span>
+          <button class="btn btn-ghost btn-sm" id="asn-pause" type="button" data-i18n="btn.liveStart">Start Live</button>
+          <button class="btn btn-ghost btn-sm" id="asn-clear" type="button" data-i18n="btn.clear">Clear</button>
+        </div>
+      </div>
+      <article class="card section-card">
+        <div class="table-wrap">
+          <table class="clean-table">
+            <thead>
+              <tr>
+                <th data-i18n="tbl.time">Time</th>
+                <th data-i18n="tbl.country">Country</th>
+                <th data-i18n="tbl.cidr">CIDR</th>
+                <th>ASN</th>
+                <th data-i18n="tbl.org">Organization</th>
+                <th data-i18n="tbl.type">Type</th>
+              </tr>
+            </thead>
+            <tbody id="asn-body"><tr><td colspan="6" class="empty-td" data-i18n="state.loadingShort">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </article>
+    </main>
+  </section>
+
+  <!-- ============ VIEW: DNS LEAK ============ -->
+  <section class="view" id="view-dns" data-view="dns" hidden>
+    <main class="sheet">
+      <div class="subview-head">
+        <h1 data-i18n="dns.title">DNS Leak Test</h1>
+        <button class="btn btn-primary btn-sm" id="dns-run" type="button" data-i18n="btn.recheck">Run Test</button>
+      </div>
+      <article class="card section-card">
+        <div class="verdict-bar" id="dns-verdict" hidden><strong id="dns-verdict-title"></strong><span id="dns-verdict-desc"></span></div>
+        <div class="state-box sm" id="dns-loading" hidden><div class="spinner xs"></div><span data-i18n="dns.probing">Probing random subdomains…</span></div>
+        <div class="table-wrap">
+          <table class="clean-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th data-i18n="tbl.resolverIp">Resolver IP</th>
+                <th data-i18n="tbl.resolverGeo">Location / ISP</th>
+                <th data-i18n="tbl.hits">Hits</th>
+              </tr>
+            </thead>
+            <tbody id="dns-body"><tr><td colspan="4" class="empty-td" data-i18n="state.waiting">Waiting…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="card-foot-note" id="dns-summary"></div>
+      </article>
+    </main>
+  </section>
+
+  <!-- ============ VIEW: WEBRTC ============ -->
+  <section class="view" id="view-webrtc" data-view="webrtc" hidden>
+    <main class="sheet">
+      <div class="subview-head">
+        <h1 data-i18n="rtc.title">WebRTC Leak Test</h1>
+        <div class="card-bar-actions">
+          <span class="mono coord-pill">HTTP: <b id="rtc-http-ip">—</b></span>
+          <button class="btn btn-primary btn-sm" id="rtc-run" type="button" data-i18n="btn.recheck">Run Test</button>
+        </div>
+      </div>
+      <article class="card section-card">
+        <div class="verdict-bar" id="rtc-verdict" hidden><strong id="rtc-verdict-title"></strong><span id="rtc-verdict-desc"></span></div>
+        <div class="state-box sm" id="rtc-loading" hidden><div class="spinner xs"></div><span data-i18n="rtc.probing">Probing STUN servers…</span></div>
+        <div class="stun-list" id="stun-list"></div>
+        <div class="card-foot-note" id="rtc-progress"></div>
+      </article>
+    </main>
+  </section>
+
+  <!-- ============ VIEW: API ============ -->
+  <section class="view" id="view-api" data-view="api" hidden>
+    <main class="sheet">
+      <div class="subview-head"><h1 data-i18n="api.title">Open JSON API</h1></div>
+      <article class="card section-card">
+        <div class="card-bar"><h2 class="bar-title" data-i18n="api.examples">Examples</h2></div>
+        <div class="api-line"><span data-i18n="api.self">Self</span><code id="api-ex-self">curl …</code><button class="icon-btn xs api-copy" type="button" data-copy="self"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button></div>
+        <div class="api-line"><span data-i18n="api.target">Query</span><code id="api-ex-ip">curl …</code><button class="icon-btn xs api-copy" type="button" data-copy="ip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button></div>
+        <div class="api-line"><span data-i18n="api.asn">ASN</span><code id="api-ex-asn">curl …</code><button class="icon-btn xs api-copy" type="button" data-copy="asn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button></div>
+      </article>
+      <article class="card section-card">
+        <div class="card-bar"><h2 class="bar-title" data-i18n="api.playground">Live Playground</h2></div>
+        <form class="api-try" id="api-try-form">
+          <input id="api-try-input" type="text" placeholder="IP or domain (leave blank for your IP)" data-i18n-placeholder="api.placeholder" />
+          <button class="btn btn-primary btn-sm" type="submit" data-i18n="btn.send">Send</button>
+        </form>
+        <pre class="api-pre" id="api-response" hidden></pre>
+      </article>
+    </main>
+  </section>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="footer">
+    <div class="sheet footer-inner">
+      <span>IPSpot · ipspot.org</span>
+      <span class="sep">·</span>
+      <a href="mailto:hezhanleiok@gmail.com" data-i18n="footer.contact">Contact</a>
+      <span class="sep">·</span>
+      <button class="footer-btn" type="button" id="open-privacy" data-i18n="footer.privacy">Privacy &amp; Disclaimer</button>
+    </div>
+  </footer>
+
+  <!-- ============ PRIVACY MODAL ============ -->
+  <dialog class="modal" id="privacy-dialog">
+    <div class="modal-box">
+      <div class="modal-head">
+        <strong data-i18n="privacy.title">Privacy Policy &amp; Disclaimer</strong>
+        <button class="icon-btn xs" type="button" id="close-privacy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <p data-i18n="privacy.p1">IPSpot (ipspot.org) queries public IP intelligence and OpenStreetMap coordinates in real time. Browser fingerprinting and WebRTC probes run locally in your browser without storing personal identity data.</p>
+        <p data-i18n="privacy.p2">This site uses Google Analytics for anonymous traffic measurement and may display Google AdSense ads. Diagnostics are for network reference only. For inquiries, use the Contact link in the footer.</p>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
