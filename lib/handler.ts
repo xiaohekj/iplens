@@ -5,6 +5,10 @@ type Signal = {
   label: string;
   detected: boolean;
   desc: string;
+  checked?: string[];
+  hits?: string[];
+  detail?: string;
+  meta?: Record<string, number>;
 };
 
 type ScoreBreakdownItem = {
@@ -181,6 +185,12 @@ const DATACENTER_WORDS = [
   "xneelo", "servers.com", "packet", "equinix", "cogent", "he.net", "hurricane electric",
   "bgp.net", "virtual", "hypervisor", "kubernetes", "fly.io", "render", "vercel",
   "netlify", "railway", "heroku", "deno", "supabase", "github", "gitlab",
+];
+
+const VPN_RDNS_WORDS = [
+  "nordvpn", "mullvad", "expressvpn", "protonvpn", "surfshark", "cyberghost",
+  "privateinternetaccess", "windscribe", "ipvanish", "torguard", "perfect-privacy",
+  "openvpn", "wireguard",
 ];
 
 const RDNS_DC_WORDS = [
@@ -364,7 +374,11 @@ async function fetchJson(url: string, timeoutMs: number, headers?: Record<string
   try {
     const res = await fetch(url, {
       signal: controller.signal,
-      headers: { accept: "application/json", ...headers },
+      headers: {
+        accept: "application/json",
+        "user-agent": "IPSpot/1.0 (+https://ipspot.org)",
+        ...headers,
+      },
     });
     if (!res.ok) throw new Error(`upstream ${res.status}`);
     return await res.json();
@@ -730,6 +744,14 @@ function buildReport(
     ipwho: any;
     geojs: any;
     freeip: any;
+    ipinfo: any;
+    ip2loc: any;
+    ipsb: any;
+    ipguide: any;
+    ipapico: any;
+    proxycheck: any;
+    onionoo: any;
+    sfs: any;
     rdap: any;
     rirCountry: any;
     ripeRir: any;
@@ -742,30 +764,77 @@ function buildReport(
   },
   queriedDomain?: string,
 ): Report {
-  const { ipapi, ipquery, ipapiCom, ipwho, geojs, freeip, rdap, rirCountry, ripeRir, ripeGeo, ripeHist, shodan, radar, radarEntity, abuseDb } = d;
+  const {
+    ipapi, ipquery, ipapiCom, ipwho, geojs, freeip,
+    ipinfo, ip2loc, ipsb, ipguide, ipapico,
+    proxycheck, onionoo, sfs,
+    rdap, rirCountry, ripeRir, ripeGeo, ripeHist, shodan, radar, radarEntity, abuseDb,
+  } = d;
   const version: 4 | 6 = IPV4_RE.test(ip) ? 4 : 6;
   const ipNumeric = version === 4 ? String(ipv4ToInt(ip)) : "—";
 
   const ipapiOk = !!(ipapi && ipapi.ip && !ipapi.error);
+  const ipapiLoc = ipapiOk
+    ? (ipapi.location && typeof ipapi.location === "object"
+      ? ipapi.location
+      : (ipapi.country || ipapi.city || ipapi.region)
+        ? {
+            country_code: normalizeCountryCode(ipapi.country_code || ipapi.country),
+            country: ipapi.country || "",
+            state: ipapi.region || "",
+            city: ipapi.city || "",
+            zip: ipapi.zip || "",
+            latitude: ipapi.lat,
+            longitude: ipapi.lon,
+            timezone: ipapi.timezone || "",
+            local_time: "",
+          }
+        : null)
+    : null;
+  const ipapiHasRisk = !!(ipapiOk && (
+    "is_proxy" in ipapi || "is_vpn" in ipapi || "is_tor" in ipapi ||
+    "is_datacenter" in ipapi || "is_mobile" in ipapi || "is_abuser" in ipapi
+  ));
   const ipqueryOk = !!(ipquery && ipquery.ip && ipquery.location);
   const ipapiComOk = !!(ipapiCom && ipapiCom.status === "success");
   const ipwhoOk = !!(ipwho && ipwho.success === true);
   const geojsOk = !!(geojs && geojs.country_code);
   const freeipOk = !!(freeip && freeip.countryCode);
+  const ipinfoOk = !!(ipinfo && ipinfo.country && !ipinfo.error);
+  const ip2locOk = !!(ip2loc && ip2loc.country_code && !ip2loc.error);
+  const ipsbOk = !!(ipsb && ipsb.country_code);
+  const ipguideOk = !!(ipguide && ipguide.location && (ipguide.location.country || ipguide.network?.autonomous_system?.country));
+  const ipapicoOk = !!(ipapico && ipapico.country_code && !ipapico.error);
   const maxmindLoc = ripeGeo?.data?.located_resources?.[0]?.locations?.[0] || null;
+
+  const pcData = proxycheck?.status === "ok" && proxycheck?.[ip] && typeof proxycheck[ip] === "object"
+    ? proxycheck[ip]
+    : null;
+  const onionooOk = !!(onionoo && Array.isArray(onionoo.relays));
+  const sfsOk = !!(sfs && sfs.success === 1 && sfs.ip && typeof sfs.ip === "object");
+
+  const shodanOk = !!(shodan && typeof shodan === "object" && !shodan.detail);
   const exposure = extractShodanExposure(shodan);
   const abuseData = abuseDb?.data && typeof abuseDb.data === "object" ? abuseDb.data : null;
 
   const activeSources: string[] = [];
   if (maxmindLoc) activeSources.push("MaxMind");
   if (ipapiOk) activeSources.push("ipapi.is");
+  if (ip2locOk) activeSources.push("IP2Location.io");
+  if (ipinfoOk) activeSources.push("IPInfo.io");
+  if (ipsbOk) activeSources.push("IP.SB");
+  if (ipguideOk) activeSources.push("IP.Guide");
   if (ipwhoOk) activeSources.push("ipwho.is");
   if (ipapiComOk) activeSources.push("ip-api.com");
   if (ipqueryOk) activeSources.push("ipquery.io");
   if (geojsOk) activeSources.push("GeoJS");
   if (freeipOk) activeSources.push("FreeIPAPI");
+  if (ipapicoOk) activeSources.push("ipapi.co");
+  if (pcData) activeSources.push("proxycheck.io");
+  if (onionooOk) activeSources.push("Tor Onionoo");
+  if (sfsOk) activeSources.push("StopForumSpam");
   if (radar) activeSources.push("Cloudflare Radar");
-  if (exposure.ports.length || exposure.tags.length) activeSources.push("Shodan");
+  if (shodanOk) activeSources.push("Shodan");
   if (abuseData) activeSources.push("AbuseIPDB");
 
   const rdapInfo = extractRdapInfo(rdap);
@@ -780,6 +849,7 @@ function buildReport(
     ripeRirCC ||
     radarEntity?.countryCode ||
     normalizeCountryCode(ipapi?.asn?.country) ||
+    normalizeCountryCode(ipguide?.network?.autonomous_system?.country) ||
     "";
 
   const multiSource: GeoCompareItem[] = [];
@@ -793,13 +863,31 @@ function buildReport(
       city: String(maxmindLoc.city || ""),
     });
   }
-  if (ipapiOk && ipapi.location) {
+  if (ip2locOk) {
+    multiSource.push({
+      source: "IP2Location",
+      countryCode: String(ip2loc.country_code || "").toUpperCase(),
+      country: ip2loc.country_name || "",
+      region: ip2loc.region_name || "",
+      city: ip2loc.city_name || "",
+    });
+  }
+  if (ipinfoOk) {
+    multiSource.push({
+      source: "IPInfo.io",
+      countryCode: String(ipinfo.country || "").toUpperCase(),
+      country: "",
+      region: ipinfo.region || "",
+      city: ipinfo.city || "",
+    });
+  }
+  if (ipapiLoc && (ipapiLoc.country_code || ipapiLoc.country)) {
     multiSource.push({
       source: "ipapi.is",
-      countryCode: String(ipapi.location.country_code || "").toUpperCase(),
-      country: ipapi.location.country || "",
-      region: ipapi.location.state || "",
-      city: ipapi.location.city || "",
+      countryCode: String(ipapiLoc.country_code || "").toUpperCase(),
+      country: ipapiLoc.country || "",
+      region: ipapiLoc.state || "",
+      city: ipapiLoc.city || "",
     });
   }
   if (ipwhoOk) {
@@ -829,6 +917,27 @@ function buildReport(
       city: ipapiCom.city || "",
     });
   }
+  if (ipsbOk) {
+    multiSource.push({
+      source: "IP.SB",
+      countryCode: String(ipsb.country_code || "").toUpperCase(),
+      country: ipsb.country || "",
+      region: ipsb.region || "",
+      city: ipsb.city || "",
+    });
+  }
+  if (ipguideOk) {
+    const gCC = normalizeCountryCode(ipguide.location.country) || normalizeCountryCode(ipguide.network?.autonomous_system?.country);
+    if (gCC) {
+      multiSource.push({
+        source: "IP.Guide",
+        countryCode: gCC,
+        country: ipguide.location.country || "",
+        region: "",
+        city: ipguide.location.city || "",
+      });
+    }
+  }
   if (geojsOk) {
     multiSource.push({
       source: "GeoJS",
@@ -847,20 +956,41 @@ function buildReport(
       city: freeip.cityName || "",
     });
   }
+  if (ipapicoOk) {
+    multiSource.push({
+      source: "ipapi.co",
+      countryCode: String(ipapico.country_code || "").toUpperCase(),
+      country: ipapico.country_name || "",
+      region: ipapico.region || "",
+      city: ipapico.city || "",
+    });
+  }
 
   const consensusCC = consensusCode(multiSource.map((m) => m.countryCode));
   const pickLoc = () => {
+    const ipinfoParts = typeof ipinfo?.loc === "string" ? ipinfo.loc.split(",") : [];
     const candidates = [
-      ipapiOk && ipapi.location ? {
-        cc: String(ipapi.location.country_code || "").toUpperCase(),
-        country: ipapi.location.country || "",
-        region: ipapi.location.state || "",
-        city: ipapi.location.city || "",
-        zip: ipapi.location.zip ? String(ipapi.location.zip) : "",
-        lat: parseNum(ipapi.location.latitude),
-        lon: parseNum(ipapi.location.longitude),
-        timezone: ipapi.location.timezone || "",
-        localtime: ipapi.location.local_time || "",
+      ipapiLoc ? {
+        cc: String(ipapiLoc.country_code || "").toUpperCase(),
+        country: ipapiLoc.country || "",
+        region: ipapiLoc.state || "",
+        city: ipapiLoc.city || "",
+        zip: ipapiLoc.zip ? String(ipapiLoc.zip) : "",
+        lat: parseNum(ipapiLoc.latitude),
+        lon: parseNum(ipapiLoc.longitude),
+        timezone: ipapiLoc.timezone || "",
+        localtime: ipapiLoc.local_time || "",
+      } : null,
+      ip2locOk ? {
+        cc: String(ip2loc.country_code || "").toUpperCase(),
+        country: ip2loc.country_name || "",
+        region: ip2loc.region_name || "",
+        city: ip2loc.city_name || "",
+        zip: ip2loc.zip_code ? String(ip2loc.zip_code) : "",
+        lat: parseNum(ip2loc.latitude),
+        lon: parseNum(ip2loc.longitude),
+        timezone: "",
+        localtime: "",
       } : null,
       ipqueryOk && ipquery.location ? {
         cc: String(ipquery.location.country_code || "").toUpperCase(),
@@ -882,6 +1012,28 @@ function buildReport(
         lat: parseNum(ipapiCom.lat),
         lon: parseNum(ipapiCom.lon),
         timezone: ipapiCom.timezone || "",
+        localtime: "",
+      } : null,
+      ipinfoOk ? {
+        cc: String(ipinfo.country || "").toUpperCase(),
+        country: "",
+        region: ipinfo.region || "",
+        city: ipinfo.city || "",
+        zip: ipinfo.postal ? String(ipinfo.postal) : "",
+        lat: parseNum(ipinfoParts[0]),
+        lon: parseNum(ipinfoParts[1]),
+        timezone: ipinfo.timezone || "",
+        localtime: "",
+      } : null,
+      ipsbOk ? {
+        cc: String(ipsb.country_code || "").toUpperCase(),
+        country: ipsb.country || "",
+        region: ipsb.region || "",
+        city: ipsb.city || "",
+        zip: ipsb.postal_code ? String(ipsb.postal_code) : "",
+        lat: parseNum(ipsb.latitude),
+        lon: parseNum(ipsb.longitude),
+        timezone: ipsb.timezone || "",
         localtime: "",
       } : null,
       ipwhoOk ? {
@@ -914,20 +1066,33 @@ function buildReport(
         zip: freeip.zipCode ? String(freeip.zipCode) : "",
         lat: parseNum(freeip.latitude),
         lon: parseNum(freeip.longitude),
-        timezone: Array.isArray(freeip.timeZones) ? (freeip.timeZones[0] || "") : "",
+        timezone: Array.isArray(freeip.timeZones) && freeip.timeZones.length === 1 ? (freeip.timeZones[0] || "") : "",
+        localtime: "",
+      } : null,
+      ipapicoOk ? {
+        cc: String(ipapico.country_code || "").toUpperCase(),
+        country: ipapico.country_name || "",
+        region: ipapico.region || "",
+        city: ipapico.city || "",
+        zip: ipapico.postal ? String(ipapico.postal) : "",
+        lat: parseNum(ipapico.latitude),
+        lon: parseNum(ipapico.longitude),
+        timezone: ipapico.timezone || "",
         localtime: "",
       } : null,
     ].filter(Boolean) as any[];
 
-    const primary = candidates.find((c) => c.cc === consensusCC) || candidates[0] || {
-      cc: "", country: "", region: "", city: "", zip: "", lat: null, lon: null, timezone: "", localtime: "",
-    };
+    const primary = candidates.find((c) => c.cc === consensusCC && c.lat !== null) ||
+      candidates.find((c) => c.cc === consensusCC) ||
+      candidates[0] || {
+        cc: "", country: "", region: "", city: "", zip: "", lat: null, lon: null, timezone: "", localtime: "",
+      };
     if (!primary.zip) {
       const z = candidates.find((c) => c.cc === primary.cc && c.zip);
       if (z) primary.zip = z.zip;
     }
     if (!primary.timezone) {
-      const tz = candidates.find((c) => c.timezone);
+      const tz = candidates.find((c) => c.cc === primary.cc && c.timezone) || candidates.find((c) => c.timezone);
       if (tz) primary.timezone = tz.timezone;
     }
     return primary;
@@ -941,35 +1106,48 @@ function buildReport(
     geoTypeLabel = isNative ? `原生 IP (${registeredCC})` : `广播 IP (${registeredCC}→${loc.cc})`;
   }
 
+  const ipapiCompanyStr = typeof ipapi?.company === "string" ? ipapi.company : (ipapi?.company?.name || "");
+  const ipapiAsnOrg = typeof ipapi?.asn === "string" ? ipapi.asn.replace(/^AS\d+\s*/i, "").trim() : (ipapi?.asn?.org || "");
   const asnNum =
-    asnNumber(ipapi?.asn?.asn) ||
+    asnNumber(typeof ipapi?.asn === "string" ? ipapi.asn : ipapi?.asn?.asn) ||
     asnNumber(ipquery?.isp?.asn) ||
     asnNumber(ipapiCom?.as) ||
     asnNumber(ipwho?.connection?.asn) ||
+    asnNumber(ip2loc?.asn) ||
+    asnNumber(ipsb?.asn) ||
+    asnNumber(ipguide?.network?.autonomous_system?.asn) ||
     asnNumber(geojs?.asn);
   const asnStr = asnNum ? `AS${asnNum}` : "";
   const orgStr =
-    ipapi?.asn?.org ||
-    ipapi?.company?.name ||
+    ipapiAsnOrg ||
+    ipapiCompanyStr ||
     radarEntity?.orgName ||
     ipquery?.isp?.org ||
     ipapiCom?.org ||
     ipwho?.connection?.org ||
+    ipsb?.asn_organization ||
+    ip2loc?.as ||
+    ipguide?.network?.autonomous_system?.organization ||
     rdapInfo.orgName ||
     geojs?.organization_name ||
     "";
   const ispStr =
-    ipapi?.company?.name ||
+    ipapiCompanyStr ||
     ipquery?.isp?.isp ||
     ipapiCom?.isp ||
     ipwho?.connection?.isp ||
+    ipsb?.isp ||
+    pcData?.provider ||
     abuseData?.isp ||
     orgStr;
-  const rdns = (ipapiComOk && typeof ipapiCom.reverse === "string" ? ipapiCom.reverse : "") || "";
+  const rdns = (ipapiComOk && typeof ipapiCom.reverse === "string" ? ipapiCom.reverse : "") ||
+    (Array.isArray(shodan?.hostnames) && shodan.hostnames[0] ? String(shodan.hostnames[0]) : "");
 
   const route =
     ipapi?.asn?.route ||
     ipapi?.company?.network ||
+    ipguide?.network?.cidr ||
+    pcData?.range ||
     rdapInfo.cidr ||
     rirStatsCidr ||
     (ripeRir?.data?.rirs?.[0]?.resource ? String(ripeRir.data.rirs[0].resource) : "") ||
@@ -982,50 +1160,100 @@ function buildReport(
   const compType = String(ipapi?.company?.type || "").toLowerCase();
 
   const company: Report["company"] = {
-    name: ipapi?.company?.name || radarEntity?.orgName || rdapInfo.orgName || orgStr || "—",
+    name: ipapiCompanyStr || radarEntity?.orgName || rdapInfo.orgName || orgStr || "—",
     type: compType || asnType || "",
     typeLabel: companyTypeLabel(compType || asnType),
     domain: ipapi?.company?.domain || ipapi?.asn?.domain || ipwho?.connection?.domain || abuseData?.domain || radarEntity?.website || "",
     netName: rdapInfo.netName || "",
     abuseEmail: ipapi?.abuse?.email || rdapInfo.abuseEmail || "",
     abuserScore: String(ipapi?.company?.abuser_score || ipapi?.asn?.abuser_score || ""),
-    rir: registryHistory[0]?.rir || rdapInfo.rir || radarEntity?.rir || "",
+    rir: registryHistory[0]?.rir || rdapInfo.rir || radarEntity?.rir || ipguide?.network?.autonomous_system?.rir || "",
   };
 
   const shodanTagsLower = exposure.tags.map((t) => t.toLowerCase());
+  const shodanPortSet = new Set(exposure.ports);
   const shodanHasCloud = shodanTagsLower.includes("cloud");
   const shodanHasProxy = shodanTagsLower.some((t) => t === "proxy" || t === "open-proxy" || t === "proxy-port");
+  const shodanProxyPort = shodanPortSet.has(1080) || shodanPortSet.has(3128) || shodanPortSet.has(8118);
   const shodanHasVpn = shodanTagsLower.includes("vpn");
+  const shodanVpnPort = shodanPortSet.has(1194) || shodanPortSet.has(51820) || shodanPortSet.has(1723) || (shodanPortSet.has(500) && shodanPortSet.has(4500));
   const shodanHasTor = shodanTagsLower.includes("tor");
   const shodanCompromised = shodanTagsLower.some((t) => t === "compromised" || t === "malware" || t === "botnet");
 
+  const pcFlag = pcData?.proxy === "yes";
+  const pcType = String(pcData?.type || "").toLowerCase();
+  const pcIsTor = pcFlag && pcType === "tor";
+  const pcIsVpn = pcFlag && pcType === "vpn";
+  const pcIsCompromised = pcFlag && pcType.includes("compromised");
+  const pcIsProxy = pcFlag && !pcIsTor && !pcIsVpn;
+
+  const onionooTor = onionooOk && onionoo.relays.some((rel: any) => {
+    if (!rel || rel.running === false) return false;
+    const addrs = [
+      ...(Array.isArray(rel.or_addresses) ? rel.or_addresses : []),
+      ...(Array.isArray(rel.exit_addresses) ? rel.exit_addresses : []),
+    ];
+    return addrs.some((a: unknown) => typeof a === "string" && (a === ip || a.startsWith(`${ip}:`) || a.startsWith(`[${ip}]`)));
+  });
+
+  const sfsHit = sfsOk && sfs.ip.appears === 1;
+  const sfsFreq = Number(sfs?.ip?.frequency) || 0;
+  const sfsConf = Number(sfs?.ip?.confidence) || 0;
+
   const abuseUsage = String(abuseData?.usageType || "").toLowerCase();
   const abuseDc = abuseUsage.includes("data center") || abuseUsage.includes("web hosting") || abuseUsage.includes("transit");
-
-  const dcByApi =
-    ipapi?.is_datacenter === true ||
-    compType === "hosting" ||
-    asnType === "hosting" ||
-    ipquery?.risk?.is_datacenter === true ||
-    (ipapiComOk && ipapiCom.hosting === true) ||
-    shodanHasCloud ||
-    abuseDc;
+  const abuseProxy = abuseUsage.includes("public proxy") || abuseUsage.includes("web proxy");
 
   const combinedText = `${orgStr} ${ispStr} ${company.name} ${company.domain} ${company.netName} ${ipapiCom?.asname || ""}`;
-  const dcByKeyword = containsAny(combinedText, DATACENTER_WORDS) || (rdns ? containsAny(rdns, RDNS_DC_WORDS) : false);
+  const hostText = `${rdns} ${Array.isArray(shodan?.hostnames) ? shodan.hostnames.join(" ") : ""}`;
+  const vpnByRdns = hostText.trim() ? containsAny(hostText, VPN_RDNS_WORDS) : false;
 
-  const isProxy =
-    ipapi?.is_proxy === true ||
-    ipquery?.risk?.is_proxy === true ||
-    (ipapiComOk && ipapiCom.proxy === true) ||
-    shodanHasProxy;
-  const isVpn = ipapi?.is_vpn === true || ipquery?.risk?.is_vpn === true || shodanHasVpn;
-  const isTor = ipapi?.is_tor === true || ipquery?.risk?.is_tor === true || shodanHasTor || abuseData?.isTor === true;
-  const isMobile =
-    ipapi?.is_mobile === true ||
-    ipquery?.risk?.is_mobile === true ||
-    (ipapiComOk && ipapiCom.mobile === true) ||
-    abuseUsage.includes("mobile");
+  const dcHits: string[] = [];
+  if (ipapi?.is_datacenter === true || compType === "hosting" || asnType === "hosting") dcHits.push("ipapi.is");
+  if (ipquery?.risk?.is_datacenter === true) dcHits.push("ipquery.io");
+  if (ipapiComOk && ipapiCom.hosting === true) dcHits.push("ip-api.com");
+  if (shodanHasCloud) dcHits.push("Shodan");
+  if (abuseDc) dcHits.push("AbuseIPDB");
+  const dcByApi = dcHits.length > 0;
+  const dcByKeyword = containsAny(combinedText, DATACENTER_WORDS) || (rdns ? containsAny(rdns, RDNS_DC_WORDS) : false);
+  if (dcByKeyword && !dcHits.includes("ASN/rDNS")) dcHits.push("ASN/rDNS");
+  const isDc = dcByApi || dcByKeyword;
+
+  const proxyHits: string[] = [];
+  if (ipapi?.is_proxy === true) proxyHits.push("ipapi.is");
+  if (ipquery?.risk?.is_proxy === true) proxyHits.push("ipquery.io");
+  if (ipapiComOk && ipapiCom.proxy === true) proxyHits.push("ip-api.com");
+  if (ip2locOk && ip2loc.is_proxy === true) proxyHits.push("IP2Location");
+  if (freeipOk && freeip.isProxy === true) proxyHits.push("FreeIPAPI");
+  if (pcIsProxy) proxyHits.push(`proxycheck (${pcData.type || "Proxy"})`);
+  if (shodanHasProxy || shodanProxyPort) proxyHits.push(shodanProxyPort ? "Shodan (Proxy Port)" : "Shodan");
+  if (abuseProxy) proxyHits.push("AbuseIPDB");
+  const isProxy = proxyHits.length > 0;
+
+  const vpnHits: string[] = [];
+  if (pcIsVpn) vpnHits.push("proxycheck.io (VPN)");
+  if (ipapi?.is_vpn === true) vpnHits.push("ipapi.is");
+  if (ipquery?.risk?.is_vpn === true) vpnHits.push("ipquery.io");
+  if (shodanHasVpn || shodanVpnPort) vpnHits.push(shodanVpnPort ? "Shodan (VPN Port)" : "Shodan");
+  if (vpnByRdns) vpnHits.push("rDNS");
+  const isVpn = vpnHits.length > 0;
+
+  const torHits: string[] = [];
+  if (onionooTor) torHits.push("Tor Onionoo");
+  if (pcIsTor) torHits.push("proxycheck.io");
+  if (ipapi?.is_tor === true) torHits.push("ipapi.is");
+  if (ipquery?.risk?.is_tor === true) torHits.push("ipquery.io");
+  if (shodanHasTor) torHits.push("Shodan");
+  if (abuseData?.isTor === true) torHits.push("AbuseIPDB");
+  const isTor = torHits.length > 0;
+
+  const mobileHits: string[] = [];
+  if (ipapi?.is_mobile === true) mobileHits.push("ipapi.is");
+  if (ipquery?.risk?.is_mobile === true) mobileHits.push("ipquery.io");
+  if (ipapiComOk && ipapiCom.mobile === true) mobileHits.push("ip-api.com");
+  if (abuseUsage.includes("mobile")) mobileHits.push("AbuseIPDB");
+  const isMobile = mobileHits.length > 0;
+
   const isCrawler = ipapi?.is_crawler === true || abuseUsage.includes("search engine spider");
 
   const ipqThreat = Number(ipquery?.risk?.assessment?.threat_score) || 0;
@@ -1036,13 +1264,17 @@ function buildReport(
     parseAbuserRatio(ipapi?.company?.abuser_score),
     parseAbuserRatio(ipapi?.asn?.abuser_score),
   );
-  const isAbuser =
-    ipapi?.is_abuser === true ||
-    ipqThreat > 0 ||
-    ipqRisk >= 50 ||
-    abuserRatio >= 0.05 ||
-    abuseDbConf >= 20 ||
-    shodanCompromised;
+
+  const abuseHits: string[] = [];
+  if (abuseData && abuseDbConf >= 20) abuseHits.push(`AbuseIPDB (${abuseDbReports} / ${abuseDbConf}%)`);
+  if (sfsHit) abuseHits.push(`StopForumSpam (${sfsFreq})`);
+  if (ipapi?.is_abuser === true || abuserRatio >= 0.05) abuseHits.push("ipapi.is");
+  if (ipqThreat > 0 || ipqRisk >= 50) abuseHits.push("ipquery.io");
+  if (pcIsCompromised) abuseHits.push("proxycheck (Compromised)");
+  if (shodanCompromised) abuseHits.push("Shodan (malware/botnet)");
+  if (exposure.vulnsCount >= 3) abuseHits.push(`Shodan CVE:${exposure.vulnsCount}`);
+  if (isCrawler) abuseHits.push("Crawler");
+  const isAbuser = abuseHits.length > 0;
 
   const isKnownResAsn = RESIDENTIAL_ASNS.has(asnNum);
   const hasResWords = containsAny(combinedText, RESIDENTIAL_WORDS);
@@ -1052,7 +1284,6 @@ function buildReport(
     compType === "education" ||
     compType === "government";
 
-  const isDc = dcByApi || dcByKeyword;
   let type: Report["type"];
   if (isMobile && !isDc) {
     type = { code: "mobile", label: "移动网络", residential: false, confidence: "high", reason: "蜂窝移动运营商出口" };
@@ -1121,13 +1352,13 @@ function buildReport(
   if (isTor) addScore("tor", "Tor 节点", 45, "命中 Tor 匿名出口");
   if (isVpn) addScore("vpn", "VPN 出口", 20, "命中 VPN 节点库");
   if (isProxy) addScore("proxy", "代理节点", 22, "命中公开代理或转发节点");
-  if (isDc && (isProxy || isVpn)) addScore("dc_proxy", "机房代理叠加", 8, "机房 + 代理复合高危特征");
+  if (isDc && (isProxy || isVpn)) addScore("dc_proxy", "机房代理叠加", 8, "机房 + 代理/VPN 复合高危特征");
 
   if (abuseData && abuseDbConf > 0) {
     const scaled = Math.min(35, Math.max(4, Math.round(abuseDbConf * 0.35)));
     addScore("abuseipdb", "AbuseIPDB 举报", scaled, `近 90 天被举报 ${abuseDbReports} 次（置信度 ${abuseDbConf}%）`, { reports: abuseDbReports, conf: abuseDbConf });
   } else if (isAbuser) {
-    const abuseDelta = abuserRatio >= 0.1 || ipqThreat >= 60 || shodanCompromised ? 24 : 16;
+    const abuseDelta = abuserRatio >= 0.1 || ipqThreat >= 60 || shodanCompromised || sfsConf >= 50 ? 24 : 16;
     addScore("abuse_generic", "滥用与威胁", abuseDelta, "命中滥用或威胁情报源");
   }
 
@@ -1137,13 +1368,134 @@ function buildReport(
   const fraud = Math.max(0, Math.min(100, Math.round(breakdown.reduce((s, x) => s + x.delta, 0))));
   const trust = 100 - fraud;
 
+  const proxyChecked = [
+    pcData ? "proxycheck.io" : "",
+    ip2locOk && "is_proxy" in ip2loc ? "IP2Location" : "",
+    ipqueryOk && ipquery.risk ? "ipquery.io" : "",
+    ipapiComOk ? "ip-api.com" : "",
+    freeipOk && "isProxy" in freeip ? "FreeIPAPI" : "",
+    ipapiHasRisk ? "ipapi.is" : "",
+    shodanOk ? "Shodan" : "",
+  ].filter(Boolean);
+
+  const vpnChecked = [
+    pcData ? "proxycheck.io" : "",
+    ipqueryOk && ipquery.risk ? "ipquery.io" : "",
+    ipapiHasRisk ? "ipapi.is" : "",
+    shodanOk ? "Shodan端口" : "",
+    rdns ? "rDNS" : "",
+  ].filter(Boolean);
+
+  const torChecked = [
+    onionooOk ? "Tor Onionoo" : "",
+    pcData ? "proxycheck.io" : "",
+    ipqueryOk && ipquery.risk ? "ipquery.io" : "",
+    ipapiHasRisk ? "ipapi.is" : "",
+    shodanOk ? "Shodan" : "",
+    abuseData ? "AbuseIPDB" : "",
+  ].filter(Boolean);
+
+  const dcChecked = [
+    ipqueryOk && ipquery.risk ? "ipquery.io" : "",
+    ipapiComOk ? "ip-api.com" : "",
+    ipapiHasRisk ? "ipapi.is" : "",
+    shodanOk ? "Shodan" : "",
+    combinedText.trim() ? "ASN/rDNS" : "",
+  ].filter(Boolean);
+
+  const mobileChecked = [
+    ipapiComOk ? "ip-api.com" : "",
+    ipqueryOk && ipquery.risk ? "ipquery.io" : "",
+    ipapiHasRisk ? "ipapi.is" : "",
+    abuseData ? "AbuseIPDB" : "",
+  ].filter(Boolean);
+
+  const abuseChecked = [
+    sfsOk ? "StopForumSpam" : "",
+    abuseData ? "AbuseIPDB" : "",
+    shodanOk ? "Shodan" : "",
+    ipqueryOk && ipquery.risk ? "ipquery.io" : "",
+    pcData ? "proxycheck.io" : "",
+    ipapiHasRisk ? "ipapi.is" : "",
+  ].filter(Boolean);
+
+  const abuseCleanParts: string[] = [];
+  if (abuseData) abuseCleanParts.push(`AbuseIPDB ${abuseDbReports}次(${abuseDbConf}%)`);
+  if (sfsOk) abuseCleanParts.push(`StopForumSpam ${sfsFreq}次`);
+  if (shodanOk) abuseCleanParts.push(`Shodan ${exposure.vulnsCount}漏洞`);
+  if (ipqueryOk && ipquery.risk) abuseCleanParts.push(`ipquery 风险 ${ipqRisk}`);
+  const abuseDetailStr = abuseHits.length
+    ? abuseHits.join(" · ")
+    : (abuseCleanParts.length ? abuseCleanParts.join(" · ") : "");
+
   const signals: Signal[] = [
-    { key: "proxy", label: "代理服务器", detected: isProxy, desc: "流量是否经过公开代理或匿名代理转发" },
-    { key: "vpn", label: "VPN 出口", detected: isVpn, desc: "是否为已知 VPN 服务的出口节点" },
-    { key: "tor", label: "Tor 网络", detected: isTor, desc: "是否为 Tor 匿名网络的出口节点" },
-    { key: "datacenter", label: "数据中心", detected: isDc, desc: "是否托管于云服务商或机房，而非家庭网络" },
-    { key: "mobile", label: "移动网络", detected: isMobile, desc: "是否通过蜂窝移动网络接入互联网" },
-    { key: "abuse", label: "滥用威胁", detected: isAbuser || isCrawler, desc: abuseData ? `AbuseIPDB 近 90 天举报 ${abuseDbReports} 次（置信度 ${abuseDbConf}%）` : "是否出现在滥用、黑名单或自动化爬虫情报源中" },
+    {
+      key: "proxy",
+      label: "代理服务器",
+      detected: isProxy,
+      checked: proxyChecked,
+      hits: proxyHits,
+      desc: isProxy
+        ? `命中：${proxyHits.join("、")}`
+        : (proxyChecked.length ? `已核验 ${proxyChecked.join(" · ")}，未见代理特征` : "流量是否经过公开代理或匿名代理转发"),
+    },
+    {
+      key: "vpn",
+      label: "VPN 出口",
+      detected: isVpn,
+      checked: vpnChecked,
+      hits: vpnHits,
+      desc: isVpn
+        ? `命中：${vpnHits.join("、")}`
+        : (vpnChecked.length ? `已核验 ${vpnChecked.join(" · ")}，未见 VPN 特征` : "是否为已知 VPN 服务的出口节点"),
+    },
+    {
+      key: "tor",
+      label: "Tor 网络",
+      detected: isTor,
+      checked: torChecked,
+      hits: torHits,
+      desc: isTor
+        ? `命中：${torHits.join("、")}`
+        : (torChecked.length ? `已核验 ${torChecked.join(" · ")}，非 Tor 出口` : "是否为 Tor 匿名网络的出口节点"),
+    },
+    {
+      key: "datacenter",
+      label: "数据中心",
+      detected: isDc,
+      checked: dcChecked,
+      hits: dcHits,
+      desc: isDc
+        ? `命中：${dcHits.join("、")}`
+        : (dcChecked.length ? `已核验 ${dcChecked.join(" · ")}，非云机房/IDC` : "是否托管于云服务商或机房，而非家庭网络"),
+    },
+    {
+      key: "mobile",
+      label: "移动网络",
+      detected: isMobile,
+      checked: mobileChecked,
+      hits: mobileHits,
+      desc: isMobile
+        ? `命中：${mobileHits.join("、")}`
+        : (mobileChecked.length ? `已核验 ${mobileChecked.join(" · ")}，非蜂窝移动网络` : "是否通过蜂窝移动网络接入互联网"),
+    },
+    {
+      key: "abuse",
+      label: "滥用威胁",
+      detected: isAbuser,
+      checked: abuseChecked,
+      hits: abuseHits,
+      meta: {
+        ...(abuseData ? { abuseReports: abuseDbReports, abuseConf: abuseDbConf } : {}),
+        ...(sfsOk ? { sfsFreq } : {}),
+        ...(shodanOk ? { vulns: exposure.vulnsCount } : {}),
+        ...(ipqueryOk && ipquery.risk ? { ipqRisk } : {}),
+      },
+      ...(abuseDetailStr ? { detail: abuseDetailStr } : {}),
+      desc: isAbuser
+        ? `命中：${abuseHits.join(" · ")}`
+        : (abuseDetailStr || "是否出现在滥用、黑名单或自动化爬虫情报源中"),
+    },
   ];
 
   return {
@@ -1208,22 +1560,39 @@ async function fetchFresh(
 ): Promise<Report> {
   const encoded = encodeURIComponent(ip);
   const abuseKey = getEnvAny(env, ["ABUSEIPDB_KEY", "ABUSEIPDB_API_KEY", "ABUSE_KEY"]);
+  const ipapiKey = getEnvAny(env, ["IPAPI_IS_KEY"]);
+  const ipinfoToken = getEnvAny(env, ["IPINFO_TOKEN"]);
+  const ip2locKey = getEnvAny(env, ["IP2LOCATION_KEY"]);
+  const pcKey = getEnvAny(env, ["PROXYCHECK_KEY"]);
 
-  const [ipapi, ipquery, ipapiCom, ipwho, geojs, freeip, rdap, ripeRir, ripeGeo, shodan, abuseDb] =
+  const [
+    ipapi, ipquery, ipapiCom, ipwho, geojs, freeip,
+    ipinfo, ip2loc, ipsb, ipguide, ipapico,
+    proxycheck, onionoo, sfs,
+    rdap, ripeRir, ripeGeo, shodan, abuseDb,
+  ] =
     await Promise.all([
-      fetchJson(`https://api.ipapi.is/?q=${encoded}`, 4800).catch(() => null),
+      fetchJson(`https://api.ipapi.is/?q=${encoded}${ipapiKey ? `&key=${encodeURIComponent(ipapiKey)}` : ""}`, 4800).catch(() => null),
       fetchJson(`https://api.ipquery.io/${encoded}`, 5000).catch(() => null),
       fetchJson(
         `http://ip-api.com/json/${encoded}?fields=status,country,countryCode,regionName,city,lat,lon,timezone,zip,isp,org,as,asname,reverse,mobile,proxy,hosting`,
-        4200,
+        4500,
       ).catch(() => null),
       fetchJson(`https://ipwho.is/${encoded}`, 4500).catch(() => null),
       fetchJson(`https://get.geojs.io/v1/ip/geo/${encoded}.json`, 4500).catch(() => null),
       fetchJson(`https://freeipapi.com/api/json/${encoded}`, 4500).catch(() => null),
+      fetchJson(`https://ipinfo.io/${encoded}/json${ipinfoToken ? `?token=${encodeURIComponent(ipinfoToken)}` : ""}`, 4500).catch(() => null),
+      fetchJson(`https://api.ip2location.io/?ip=${encoded}${ip2locKey ? `&key=${encodeURIComponent(ip2locKey)}` : ""}`, 4800).catch(() => null),
+      fetchJson(`https://api.ip.sb/geoip/${encoded}`, 4500).catch(() => null),
+      fetchJson(`https://ip.guide/${encoded}`, 4800).catch(() => null),
+      fetchJson(`https://ipapi.co/${encoded}/json/`, 4500).catch(() => null),
+      fetchJson(`https://proxycheck.io/v2/${encoded}?vpn=1&asn=1${pcKey ? `&key=${encodeURIComponent(pcKey)}` : ""}`, 4800).catch(() => null),
+      fetchJson(`https://onionoo.torproject.org/details?search=${encoded}&limit=1`, 4800).catch(() => null),
+      fetchJson(`https://api.stopforumspam.org/api?ip=${encoded}&json`, 4500).catch(() => null),
       fetchJson(`https://rdap.org/ip/${encoded}`, 6000).catch(() => null),
       fetchJson(`https://stat.ripe.net/data/rir/data.json?resource=${encoded}`, 6500).catch(() => null),
       fetchJson(`https://stat.ripe.net/data/maxmind-geo-lite/data.json?resource=${encoded}`, 6500).catch(() => null),
-      IPV4_RE.test(ip) ? fetchJson(`https://internetdb.shodan.io/${encoded}`, 3800).catch(() => null) : Promise.resolve(null),
+      IPV4_RE.test(ip) ? fetchJson(`https://internetdb.shodan.io/${encoded}`, 4200).catch(() => null) : Promise.resolve(null),
       abuseKey
         ? fetchJson(`https://api.abuseipdb.com/api/v2/check?ipAddress=${encoded}&maxAgeInDays=90`, 4200, { key: abuseKey }).catch(() => null)
         : Promise.resolve(null),
@@ -1235,15 +1604,23 @@ async function fetchFresh(
     (ipapiCom && ipapiCom.status === "success") ||
     (ipwho && ipwho.success === true) ||
     (geojs && geojs.country_code) ||
-    (freeip && freeip.countryCode);
+    (freeip && freeip.countryCode) ||
+    (ipinfo && ipinfo.country && !ipinfo.error) ||
+    (ip2loc && ip2loc.country_code && !ip2loc.error) ||
+    (ipsb && ipsb.country_code) ||
+    (ipguide && ipguide.location) ||
+    (ipapico && ipapico.country_code && !ipapico.error);
 
   if (!anyPrimaryOk) throw new Error("upstream_unavailable");
 
   const resolvedAsn =
-    asnNumber(ipapi?.asn?.asn) ||
+    asnNumber(typeof ipapi?.asn === "string" ? ipapi.asn : ipapi?.asn?.asn) ||
     asnNumber(ipquery?.isp?.asn) ||
     asnNumber(ipapiCom?.as) ||
     asnNumber(ipwho?.connection?.asn) ||
+    asnNumber(ip2loc?.asn) ||
+    asnNumber(ipsb?.asn) ||
+    asnNumber(ipguide?.network?.autonomous_system?.asn) ||
     asnNumber(geojs?.asn);
 
   const rdapQuickCC = extractRdapInfo(rdap).countryCode;
@@ -1260,7 +1637,12 @@ async function fetchFresh(
 
   return buildReport(
     ip,
-    { ipapi, ipquery, ipapiCom, ipwho, geojs, freeip, rdap, rirCountry, ripeRir, ripeGeo, ripeHist, shodan, radar, radarEntity, abuseDb },
+    {
+      ipapi, ipquery, ipapiCom, ipwho, geojs, freeip,
+      ipinfo, ip2loc, ipsb, ipguide, ipapico,
+      proxycheck, onionoo, sfs,
+      rdap, rirCountry, ripeRir, ripeGeo, ripeHist, shodan, radar, radarEntity, abuseDb,
+    },
     queriedDomain,
   );
 }
@@ -1281,6 +1663,14 @@ async function lookup(ip: string, queriedDomain?: string, env?: Record<string, u
   const report = await fetchFresh(ip, queriedDomain, env);
   cacheReport(ip, report);
   return report;
+}
+
+function setBoundedCache<K, V>(map: Map<K, V>, max: number, key: K, value: V) {
+  if (map.size >= max) {
+    const oldest = map.keys().next().value;
+    if (oldest !== undefined) map.delete(oldest);
+  }
+  map.set(key, value);
 }
 
 /* ================= 免费真实街道地址反查 ================= */
@@ -1329,7 +1719,7 @@ async function lookupGeoAddress(
         postcode: a.postcode || "—",
         timezone: timezone || "—",
       };
-      if (!jitter) geoAddrCache.set(cacheKey, { at: Date.now(), data });
+      if (!jitter) setBoundedCache(geoAddrCache, 1500, cacheKey, { at: Date.now(), data });
       return data;
     }
   } catch { /* fallback */ }
@@ -1352,7 +1742,7 @@ async function lookupGeoAddress(
         postcode: p.postcode || "—",
         timezone: timezone || "—",
       };
-      if (!jitter) geoAddrCache.set(cacheKey, { at: Date.now(), data });
+      if (!jitter) setBoundedCache(geoAddrCache, 1500, cacheKey, { at: Date.now(), data });
       return data;
     }
   } catch { /* fallback */ }
@@ -1376,7 +1766,7 @@ async function lookupGeoAddress(
         postcode: bdc.postcode || "—",
         timezone: timezone || "—",
       };
-      if (!jitter) geoAddrCache.set(cacheKey, { at: Date.now(), data });
+      if (!jitter) setBoundedCache(geoAddrCache, 1500, cacheKey, { at: Date.now(), data });
       return data;
     }
   } catch { /* ignore */ }
@@ -1390,25 +1780,28 @@ function buildRuleBasedAnalysis(report: Report, clientEnv: any, lang: Lang): str
   const bot = report.humanRatio.bot;
   const isRes = report.type.residential;
   const isNative = report.location.isNative !== false;
+  const cleanLowRes = isRes && fraud <= 20;
   const envWarn = clientEnv && Array.isArray(clientEnv.warnings) ? clientEnv.warnings : [];
 
   if (lang === "en") {
-    const verdict = fraud <= 18 && isRes ? "Clean residential IP with low risk" :
-      fraud <= 35 && (isRes || bot < 80) ? "Low-to-moderate risk IP suitable for standard access" :
-      fraud <= 55 ? `Neutral risk ${report.type.code} IP (${bot}% bot traffic on ASN)` :
-      `High-risk ${report.type.code} IP (${fraud}% risk score)`;
-    const aiPlat = isRes
-      ? (fraud <= 20 ? "Highly recommended — minimal verification friction" :
-        fraud <= 45 ? "Usable — occasional CAPTCHA or rate checks" :
-        "Not recommended — high risk signals on this IP")
-      : (fraud <= 45 && bot < 80 ? "Usable — occasional CAPTCHA or rate checks" :
-        "Not recommended — high chance of CAPTCHA, downgrade, or blocks");
-    const biz = fraud <= 18 && isRes && isNative ? "Suitable for social accounts, e-commerce, and payments" :
-      fraud <= 38 && isRes ? "Browsing & light registration only" :
-      "Not recommended — avoid account sign-ups, ads, or payment checkout";
-    const tip = envWarn.length ? "Align local timezone/language with exit IP and verify WebRTC." :
-      fraud > 35 || (!isRes && bot >= 80) ? "Switch to a clean native residential IP for sensitive workflows." :
-      "Environment looks clean; keep current network and timezone settings.";
+    const verdict = cleanLowRes
+      ? (isNative ? "Clean native residential IP with minimal risk" : "Low-risk broadcast residential IP, stable for regular use")
+      : fraud <= 35 ? "Low-to-moderate risk IP suitable for standard access"
+      : fraud <= 55 ? `Neutral risk ${report.type.code} IP (macro ASN bot baseline ${bot}%)`
+      : `High-risk ${report.type.code} IP (${fraud}% risk score)`;
+    const aiPlat = cleanLowRes ? "Highly recommended — minimal verification friction"
+      : fraud <= 45 && (isRes || bot < 75) ? "Usable — occasional CAPTCHA or rate checks"
+      : "Not recommended — datacenter or high-risk signals trigger CAPTCHA or blocks";
+    const biz = cleanLowRes && isNative ? "Recommended — suitable for social accounts, e-commerce, and payments"
+      : cleanLowRes ? "Usable — align local timezone/language for cross-border accounts"
+      : fraud <= 38 && isRes ? "Browsing & light registration only"
+      : "Not recommended — avoid account sign-ups, ads, or payment checkout";
+    const tip = envWarn.length
+      ? (cleanLowRes
+        ? `IP itself is clean; align local environment (${envWarn.join(", ")}).`
+        : `Fix local environment mismatches (${envWarn.join(", ")}) and switch to a clean native residential IP for sensitive workflows.`)
+      : fraud > 35 || !isRes ? "Switch to a clean native residential IP for sensitive workflows."
+      : "Environment looks clean; keep current network and timezone settings.";
     return [
       `- **Verdict**: ${verdict} (Risk ${fraud}%, Purity ${report.scores.trust}/100)`,
       `- **AI Platforms**: ${aiPlat}`,
@@ -1418,20 +1811,24 @@ function buildRuleBasedAnalysis(report: Report, clientEnv: any, lang: Lang): str
   }
 
   if (lang === "zh-TW") {
-    const verdict = fraud <= 18 && isRes ? "純淨原生家寬 IP，風控風險極低" :
-      fraud <= 35 && (isRes || bot < 80) ? "低風險網路節點，常規存取穩定" :
-      fraud <= 55 ? `中性風險 ${report.type.label}（所屬 ASN 機器流量 ${bot}%）` :
-      `高風險 ${report.type.label}（風險係數 ${fraud}%）`;
-    const aiPlat = isRes
-      ? (fraud <= 20 ? "高度推薦，觸發驗證機率極低" :
-        fraud <= 45 ? "可用，偶發人機驗證或降速" :
-        "不推薦，該 IP 自身風險信號偏高")
-      : (fraud <= 45 && bot < 80 ? "可用，偶發人機驗證或降速" :
-        "不推薦，機房或高 Bot 特徵易觸發降智與攔截");
-    const biz = fraud <= 18 && isRes && isNative ? "適合社群養號、跨境電商與支付場景" :
-      fraud <= 38 && isRes ? "僅建議日常瀏覽，謹慎用於敏感註冊" :
-      "不推薦，請勿用於註冊、廣告投放或支付結帳";
-    const tip = fraud > 35 || (!isRes && bot >= 80) ? "敏感業務建議切換至乾淨的原生住宅家寬 IP。" : "目前環境良好，保持本機時區與出口地區一致即可。";
+    const verdict = cleanLowRes
+      ? (isNative ? "純淨原生家寬 IP，風控風險極低" : "低風險廣播家寬 IP，日常存取穩定")
+      : fraud <= 35 ? "低風險網路節點，常規存取穩定"
+      : fraud <= 55 ? `中性風險 ${report.type.label}（所屬 ASN 整網機器流量均值 ${bot}%）`
+      : `高風險 ${report.type.label}（風險係數 ${fraud}%）`;
+    const aiPlat = cleanLowRes ? "高度推薦，觸發驗證機率極低"
+      : fraud <= 45 && (isRes || bot < 75) ? "基本可用，偶發人機驗證或降速"
+      : "不推薦，機房或高風險特徵易觸發降智與攔截";
+    const biz = cleanLowRes && isNative ? "推薦，適合社群養號、跨境電商與支付場景"
+      : cleanLowRes ? "基本可用，建議保持本機時區與出口地區一致"
+      : fraud <= 38 && isRes ? "僅建議日常瀏覽，謹慎用於敏感註冊"
+      : "不推薦，請勿用於註冊、廣告投放或支付結帳";
+    const tip = envWarn.length
+      ? (cleanLowRes
+        ? `IP 本身純淨，建議對齊本機環境（${envWarn.join("、")}）。`
+        : `建議處理本機環境偏差（${envWarn.join("、")}），敏感業務請切換原生家寬 IP。`)
+      : fraud > 35 || !isRes ? "敏感業務建議切換至乾淨的原生住宅家寬 IP。"
+      : "目前環境良好，保持本機時區與出口地區一致即可。";
     return [
       `- **綜合定性**：${verdict}（風險 ${fraud}% / 純淨分 ${report.scores.trust}）`,
       `- **AI 平台 (ChatGPT/Claude)**：${aiPlat}`,
@@ -1441,20 +1838,24 @@ function buildRuleBasedAnalysis(report: Report, clientEnv: any, lang: Lang): str
   }
 
   if (lang === "ja") {
-    const verdict = fraud <= 18 && isRes ? "クリーンなネイティブ住宅IP（低リスク）" :
-      fraud <= 35 && (isRes || bot < 80) ? "標準利用に適した低〜中リスクIP" :
-      fraud <= 55 ? `中立リスクIP（ASNのBot比率 ${bot}%）` :
-      `高リスクIP（リスク係数 ${fraud}%）`;
-    const aiPlat = isRes
-      ? (fraud <= 20 ? "強く推奨 — 認証要求の発生率は極めて低い" :
-        fraud <= 45 ? "利用可能 — 時々CAPTCHAが表示される可能性あり" :
-        "非推奨 — このIP自体のリスク指標が高い")
-      : (fraud <= 45 && bot < 80 ? "利用可能 — 時々CAPTCHAが表示される可能性あり" :
-        "非推奨 — Bot判定による制限やブロックの可能性が高い");
-    const biz = fraud <= 18 && isRes && isNative ? "SNS運用・EC・決済用途に適しています" :
-      fraud <= 38 && isRes ? "通常閲覧向け、新規登録は慎重に" :
-      "非推奨 — アカウント登録や決済には使用しないでください";
-    const tip = fraud > 35 || (!isRes && bot >= 80) ? "重要な業務にはクリーンな住宅IPへの切り替えを推奨します。" : "環境は良好です。現在のネットワーク設定を維持してください。";
+    const verdict = cleanLowRes
+      ? (isNative ? "クリーンなネイティブ住宅IP（低リスク）" : "低リスクのブロードキャスト住宅IP（通常利用向き）")
+      : fraud <= 35 ? "標準利用に適した低〜中リスクIP"
+      : fraud <= 55 ? `中立リスクIP（ASN全体のBot平均 ${bot}%）`
+      : `高リスクIP（リスク係数 ${fraud}%）`;
+    const aiPlat = cleanLowRes ? "強く推奨 — 認証要求の発生率は極めて低い"
+      : fraud <= 45 && (isRes || bot < 75) ? "利用可能 — 時々CAPTCHAが表示される可能性あり"
+      : "非推奨 — 制限やブロックの可能性が高い";
+    const biz = cleanLowRes && isNative ? "推奨 — SNS運用・EC・決済用途に適しています"
+      : cleanLowRes ? "利用可能 — 端末のタイムゾーンを一致させてご利用ください"
+      : fraud <= 38 && isRes ? "通常閲覧向け、新規登録は慎重に"
+      : "非推奨 — アカウント登録や決済には使用しないでください";
+    const tip = envWarn.length
+      ? (cleanLowRes
+        ? `IP自体は良好です。ローカル環境の差異（${envWarn.join("、")}）を調整してください。`
+        : `ローカル環境の差異（${envWarn.join("、")}）を修正し、重要業務はクリーンな住宅IPを推奨します。`)
+      : fraud > 35 || !isRes ? "重要な業務にはクリーンな住宅IPへの切り替えを推奨します。"
+      : "環境は良好です。現在のネットワーク設定を維持してください。";
     return [
       `- **総合判定**：${verdict}（リスク ${fraud}% / 純度 ${report.scores.trust}/100）`,
       `- **AI プラットフォーム**：${aiPlat}`,
@@ -1463,22 +1864,24 @@ function buildRuleBasedAnalysis(report: Report, clientEnv: any, lang: Lang): str
     ].join("\n");
   }
 
-  const verdict = fraud <= 18 && isRes ? "纯净原生家宽 IP，风控风险极低" :
-    fraud <= 35 && (isRes || bot < 80) ? "低风险网络节点，常规访问稳定" :
-    fraud <= 55 ? `中性风险 ${report.type.label}（所属 ASN 机器流量 ${bot}%）` :
-    `高风险 ${report.type.label}（风险系数 ${fraud}%）`;
-  const aiPlat = isRes
-    ? (fraud <= 20 ? "高度推荐，触发验证概率极低" :
-      fraud <= 45 ? "基本可用，偶发人机校验或限速" :
-      "不推荐，该 IP 自身风险信号偏高")
-    : (fraud <= 45 && bot < 80 ? "基本可用，偶发人机校验或限速" :
-      "不推荐，机房或高 Bot 比例易触发降智、验证或拦截");
-  const biz = fraud <= 18 && isRes && isNative ? "适合社媒养号、跨境店铺与支付场景" :
-    fraud <= 38 && isRes ? "仅建议日常浏览，谨慎用于敏感注册" :
-    "不推荐，请勿用于账号注册、起号或支付结账";
-  const tip = envWarn.length ? `建议处理本机环境偏差（${envWarn.join("、")}），敏感业务请换原生家宽 IP。` :
-    fraud > 35 || (!isRes && bot >= 80) ? "普通浏览可用；涉及注册或支付建议更换干净的原生家宽 IP。" :
-    "当前网络纯净度良好，保持出口地区与本地时区一致即可。";
+  const verdict = cleanLowRes
+    ? (isNative ? "纯净原生家宽 IP，风控风险极低" : "低风险广播家宽 IP，日常访问稳定")
+    : fraud <= 35 ? "低风险网络节点，常规访问稳定"
+    : fraud <= 55 ? `中性风险 ${report.type.label}（所属 ASN 整网机器流量均值 ${bot}%）`
+    : `高风险 ${report.type.label}（风险系数 ${fraud}%）`;
+  const aiPlat = cleanLowRes ? "高度推荐，触发验证概率极低"
+    : fraud <= 45 && (isRes || bot < 75) ? "基本可用，偶发人机校验或限速"
+    : "不推荐，机房或高风险特征易触发降智、验证或拦截";
+  const biz = cleanLowRes && isNative ? "推荐，适合社媒养号、跨境店铺与常规支付场景"
+    : cleanLowRes ? "基本可用，建议保持本机时区与出口地区一致"
+    : fraud <= 38 && isRes ? "仅建议日常浏览，谨慎用于敏感注册"
+    : "不推荐，请勿用于账号注册、起号或支付结账";
+  const tip = envWarn.length
+    ? (cleanLowRes
+      ? `IP 本身纯净度良好，建议修正本机环境偏差（${envWarn.join("、")}）。`
+      : `建议处理本机环境偏差（${envWarn.join("、")}），敏感业务请换原生家宽 IP。`)
+    : fraud > 35 || !isRes ? "普通浏览可用；涉及注册或支付建议更换干净的原生家宽 IP。"
+    : "当前网络纯净度良好，保持出口地区与本地时区一致即可。";
 
   return [
     `- **综合定性**：${verdict}（风险 ${fraud}% / 纯净分 ${report.scores.trust}）`,
@@ -1495,14 +1898,16 @@ function buildAiPrompts(lang: Lang, report: Report, clientEnv: any): { system: s
     city: report.location.city,
     isNative: report.location.isNative,
     registeredCountry: report.location.registeredCountryCode,
+    asn: report.network.asn,
     networkType: report.type.code,
-    residential: report.type.residential,
+    isResidential: report.type.residential,
     company: report.company.name,
     riskScore: report.scores.fraud,
     purityScore: report.scores.trust,
     riskLevel: report.scores.riskCode,
     humanPct: report.humanRatio.human,
     botPct: report.humanRatio.bot,
+    botScope: "ASN-wide 7d average, not single-IP traffic",
     abuseReports90d: report.abuse?.reports ?? 0,
     abuseConfidence: report.abuse?.confidence ?? 0,
     exposureTags: report.exposure.tags,
@@ -1512,24 +1917,24 @@ function buildAiPrompts(lang: Lang, report: Report, clientEnv: any): { system: s
 
   if (lang === "en") {
     return {
-      system: "You are a rigorous IP risk analyst. Reply in concise English with exactly 4 Markdown bullet points (under 90 words total). Judge the IP primarily by its own riskScore, abuse reports and concrete proxy/VPN/Tor/datacenter signals. botPct is ASN-level background traffic, not an IP-specific verdict. Residential exception: when networkType is 'residential' and riskScore <= 45, never say 'Not recommended' merely because botPct is high; use 'Highly recommended' for riskScore <= 20 and 'Usable' for 21-45. For residential IPs, only say 'Not recommended' when riskScore >= 46 or when concrete abuse/proxy/Tor/datacenter signals exist. For non-residential IPs, high botPct (>=80) with riskScore 21-45 may still justify 'Not recommended' or 'Browsing only'. Never call a riskScore >= 31 IP 'high trust'. Avoid ambiguous phrases like 'low, high risk'.",
+      system: "You are a strict IP risk analyst. Reply in concise English with exactly 4 Markdown bullet points (under 95 words total). Follow 3 strict rules: 1. botPct is the macro 7-day average of the entire ASN (major consumer ISPs commonly sit at 35%-65%) and does NOT measure a single residential IP. When isResidential is true and riskScore <= 20 with no proxy/vpn/tor/datacenter/abuse signals, you MUST classify it as clean low-risk residential and output 'Highly recommended' / 'Recommended' (never penalize it as 'Not recommended' due to ASN botPct). 2. If riskScore >= 31 or (!isResidential and botPct >= 70), NEVER call it 'high trust'; 31-50 is neutral/moderate risk. 3. Use clear verdicts: 'Highly recommended', 'Recommended', 'Usable', 'Browsing only', or 'Not recommended'.",
       user: `Analyze this IP intelligence JSON and output exactly 4 bullets: 1.**Verdict** 2.**AI Platforms (ChatGPT/Claude)** 3.**Commerce / Social / Payments** 4.**Recommendation**.\n${payload}`,
     };
   }
   if (lang === "zh-TW") {
     return {
-      system: "你是嚴謹的 IP 風控專家，請用極簡繁體中文輸出恰好 4 條 Markdown 列表（總字數 150 字內）。判定必須以該 IP 自身的 riskScore、abuse 檢舉以及代理/VPN/Tor/機房等具體信號為主；botPct 只是該 ASN 的整體機器流量背景，不能單獨作為否定家寬 IP 的依據。家寬例外：當 networkType 為 'residential' 且 riskScore <= 45 時，不得僅因 botPct 高而寫「不推薦」；riskScore <= 20 寫「高度推薦」，21-45 寫「基本可用」。對家寬 IP，只有 riskScore >= 46，或存在明確的濫用/代理/Tor/機房信號時，才可寫「不推薦」。對非家寬 IP，botPct >= 80 且 riskScore 21-45 時，仍可判「不推薦」或「僅限普通瀏覽」。嚴禁前後矛盾：riskScore >= 31 不得稱為「高信任度」；嚴禁「低，風險高」這類歧義表達。",
+      system: "你是嚴謹的 IP 風控專家，請用極簡繁體中文輸出恰好 4 條 Markdown 列表（總字數 160 字內，禁止廢話）。嚴格遵守 3 條規則：1. botPct 是所屬整個電信商 ASN 近 7 天宏觀均值（大型家寬電信商整網常在 35%-65%），不代表當前單個住宅 IP 的行為；當 isResidential 為 true 且 riskScore <= 20（無代理/VPN/Tor/機房與惡意舉報）時，必須優先定性為純淨低風險家寬並給出「高度推薦」「推薦」，絕不可因 ASN 均值偏高而判為「不推薦」。2. 嚴禁前後矛盾：當 riskScore >= 31 或（非家寬且 botPct >= 70）時絕不可稱為「高信任度」，31-50 分定性為中性/中等風險。3. 嚴禁用孤立的「低，風險高」造成誤解，必須明確寫「高度推薦」「推薦」「基本可用」「僅限普通瀏覽」「不推薦（高風險/機房）」。",
       user: `根據以下 IP 情報輸出 4 條精簡診斷：1.**綜合定性** 2.**AI 平台 (ChatGPT/Claude)** 3.**跨境 / 社群 / 支付** 4.**實操建議**。\n${payload}`,
     };
   }
   if (lang === "ja") {
     return {
-      system: "あなたは厳格なIPリスクアナリストです。簡潔な日本語で4つのMarkdown箇条書き（合計160文字以内）のみを出力してください。判定はこのIP自身の riskScore、abuse 報告、プロキシ/VPN/Tor/データセンターなどの具体的なシグナルを主軸にしてください。botPct は ASN 全体の機械トラフィック背景であり、住宅IPを否定する単独根拠にはできません。住宅IP例外：networkType が 'residential' かつ riskScore <= 45 の場合、botPct が高いだけで「非推奨」と書かないでください。riskScore <= 20 は「強く推奨」、21-45 は「利用可能」とします。住宅IPの場合、riskScore >= 46、または明確な abuse/プロキシ/Tor/データセンターのシグナルがある場合のみ「非推奨」と書けます。非住宅IPでは、botPct >= 80 かつ riskScore 21-45 の場合、「非推奨」または「通常閲覧のみ」と判断しても構いません。riskScore >= 31 のIPを「高信頼」と呼ばないでください。",
+      system: "あなたは厳格なIPリスクアナリストです。簡潔な日本語で4つのMarkdown箇条書き（合計170文字以内）のみを出力してください。次の3規則を厳守してください：1. botPct は所属ASN全体の7日間平均値であり、単一住宅IPの挙動ではありません。isResidential が true かつ riskScore <= 20（proxy/vpn/tor/datacenter/abuseなし）の場合は、ASNのbotPctが35%-65%前後でも必ず「低リスク住宅IP」「強く推奨」「推奨」と評価し、「非推奨」と誤判定しないでください。2. riskScore >= 31 または（非住宅かつ botPct >= 70）の場合は決して「高信頼」と書かず、31-50は中立リスクとしてください。3.「強く推奨」「推奨」「利用可能」「通常閲覧のみ」「非推奨」などの明確な表現を使ってください。",
       user: `以下のIP情報から4項目を診断してください：1.**総合判定** 2.**AI プラットフォーム (ChatGPT/Claude)** 3.**EC / SNS / 決済** 4.**推奨アクション**。\n${payload}`,
     };
   }
   return {
-    system: "你是严谨的 IP 风控专家，请用极简简体中文输出恰好 4 条 Markdown 列表（总字数 150 字内，禁止废话）。判定必须以该 IP 自身的 riskScore、abuse 举报以及代理/VPN/Tor/机房等具体信号为主；botPct 只是该 ASN 的整体机器流量背景，不能单独作为否定家宽 IP 的依据。家宽例外：当 networkType 为 'residential' 且 riskScore <= 45 时，不得仅因 botPct 高而写“不推荐”；riskScore <= 20 写“高度推荐”，21-45 写“基本可用”。对家宽 IP，只有 riskScore >= 46，或存在明确的滥用/代理/Tor/机房信号时，才可写“不推荐”。对非家宽 IP，botPct >= 80 且 riskScore 21-45 时，仍可判“不推荐”或“仅限普通浏览”。禁止前后矛盾：riskScore >= 31 不得称为“高信任度”；禁止“低，风险高”这类歧义表达。",
+    system: "你是严谨的 IP 风控专家，请用极简简体中文输出恰好 4 条 Markdown 列表（总字数 160 字内，禁止废话）。严格遵守 3 条规则：1. botPct 仅代表所属整个运营商 ASN 近 7 天宏观均值（电信/联通等大型家宽 ASN 整网常在 35%-65%），不代表当前单个住宅 IP 存在机器行为；当 isResidential 为 true 且 riskScore <= 20（无 proxy/vpn/tor/datacenter 及高危举报）时，必须优先定性为纯净/低风险家宽，并给出“高度推荐”“推荐”，绝不可因大网 botPct 偏高而误判为“不推荐”。2. 严禁前后矛盾：当 riskScore >= 31 或（非家宽且 botPct >= 70）时绝不可称为“高信任度”，31-50 分定性为中性/中等风险。3. 严禁写出“低，风险高”这类歧义短语，必须直接写“高度推荐”“推荐”“基本可用”“仅限普通浏览”“不推荐（高风险/机房）”。",
     user: `根据以下真实 IP 情报输出 4 条简短诊断：1.**综合定性** 2.**AI 平台 (ChatGPT/Claude)** 3.**跨境 / 社媒 / 支付** 4.**实操建议**。\n${payload}`,
   };
 }
@@ -1579,7 +1984,7 @@ async function generateAiReport(
   env?: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const envKey = clientEnv ? `${clientEnv.humanScore ?? ""}-${(clientEnv.warnings || []).length}` : "none";
-  const cacheKey = `${lang}:${report.ip}:${report.scores.fraud}:${envKey}`;
+  const cacheKey = `${lang}:${report.ip}:${report.type.code}:${report.scores.fraud}:${report.humanRatio.bot}:${envKey}:v2`;
   const hit = aiCache.get(cacheKey);
   if (hit && Date.now() - hit.at < AI_CACHE_TTL) return { ...hit.data, cached: true };
 
@@ -1647,13 +2052,13 @@ async function generateAiReport(
     try {
       const text = await p.run();
       const data = { ok: true, provider: p.name, text };
-      aiCache.set(cacheKey, { at: Date.now(), data });
+      setBoundedCache(aiCache, 1000, cacheKey, { at: Date.now(), data });
       return data;
     } catch { /* fallback to next */ }
   }
 
   const data = { ok: true, provider: "Rule Engine", text: buildRuleBasedAnalysis(report, clientEnv, lang) };
-  aiCache.set(cacheKey, { at: Date.now(), data });
+  setBoundedCache(aiCache, 1000, cacheKey, { at: Date.now(), data });
   return data;
 }
 

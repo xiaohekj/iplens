@@ -3,7 +3,7 @@
 const $ = (id) => document.getElementById(id);
 const API = "/functions/v1/app";
 const HISTORY_KEY = "ipspot-history";
-const OWN_KEY = "ipspot-own-v7";
+const OWN_KEY = "ipspot-own-v8";
 const THEME_KEY = "ipspot-theme";
 const LANG_KEY = "ipspot-lang";
 
@@ -137,14 +137,31 @@ const I18N = {
     "ga.noStreet": "Street unavailable",
     "ga.fallbackSrc": "IP Database",
     "faq.summary": "How IPSpot Works & Frequently Asked Questions",
-    "faq.q1": "Native, Broadcast & Residential IP Detection",
-    "faq.a1": "IPSpot cross-checks RIR registries (ARIN, RIPE, APNIC) against multi-source geolocation to verify native vs broadcast routing, combining ASN type, rDNS, Shodan, and AbuseIPDB to separate residential ISPs from datacenters.",
-    "faq.q2": "Human/Bot Traffic Ratio & Purity Score",
-    "faq.a2": "Powered by Cloudflare Radar 7-day ASN bot traffic statistics, combined with network baseline, abuse reports, and proxy signals for transparent 0–100% risk scoring.",
-    "faq.q3": "Browser Fingerprint & Leak Tests",
-    "faq.a3": "Integrates FingerprintJS v4, Canvas/WebGL/Audio/font hardware fingerprinting, 32-char random subdomain DNS leak detection, and multi-STUN WebRTC leak testing.",
-    "faq.q4": "Real Street Address & Open API",
-    "faq.a4": "Reverse-geocodes IP coordinates via OpenStreetMap to surface nearby street, city, state, postal code, and timezone details, plus a free JSON API for developers.",
+    "faq.count": "8 QUESTIONS",
+    "faq.tag1": "Origin",
+    "faq.tag2": "Score",
+    "faq.tag3": "Security",
+    "faq.tag4": "GeoIP",
+    "faq.tag5": "Fingerprint",
+    "faq.tag6": "Network",
+    "faq.tag7": "Map",
+    "faq.tag8": "API",
+    "faq.q1": "How are Native, Broadcast & Residential IPs classified?",
+    "faq.a1": "IPSpot cross-checks RIR registries (ARIN, RIPE, APNIC) and RDAP country records against 12 geolocation feeds to verify native vs broadcast routing, combining ASN type, cloud keywords, rDNS, and Shodan traits to separate residential ISPs from datacenters.",
+    "faq.q2": "How are Human/Bot Ratio & IPSpot Purity Score calculated?",
+    "faq.a2": "Powered by Cloudflare Radar 7-day ASN bot traffic statistics combined with network baselines, broadcast checks, proxy/VPN/Tor feeds, AbuseIPDB, and StopForumSpam reports for transparent 0–100% scoring without penalizing clean residential ISPs.",
+    "faq.q3": "How are the 6 Risk Signals cross-verified?",
+    "faq.a3": "Every signal (Proxy, VPN, Tor, Datacenter, Mobile, Abuse) is cross-checked across proxycheck.io, official Tor Onionoo relays, StopForumSpam, IP2Location, ipquery.io, ip-api.com, and Shodan ports, displaying the exact verified or matched sources.",
+    "faq.q4": "Why do different IP lookup sites show different locations?",
+    "faq.a4": "GeoIP providers (MaxMind, IP2Location, IPInfo, ipapi.is, GeoJS, etc.) update at different intervals and handle anycast or broadcast routing differently. IPSpot displays up to 12 independent feeds side by side and uses consensus matching.",
+    "faq.q5": "What does the Browser Fingerprint & Consistency check test?",
+    "faq.a5": "Locally collects FingerprintJS v4, Canvas, WebGL, Audio, font hashes, screen DPR, and WebDriver/Headless signals, then compares your browser timezone, language, and WebRTC output against your exit IP.",
+    "faq.q6": "How do DNS Leak & WebRTC Leak tests work?",
+    "faq.a6": "DNS leak detection probes randomized 32-character subdomains to bypass caches and capture your true recursive resolvers, while WebRTC testing queries multiple global STUN servers to check for exposed local or public IPs.",
+    "faq.q7": "How is the Real Street Address under the map generated?",
+    "faq.a7": "Using the target IP coordinates, IPSpot queries OpenStreetMap Nominatim and Photon reverse geocoding in real time to return nearby street, city, state, country, postal code, and timezone data with one-click copy.",
+    "faq.q8": "What can I do with ASN Live, AI Diagnosis & Open API?",
+    "faq.a8": "ASN Live streams real-time BGP route announcements and withdrawals from RIPE RIS Live; AI Diagnosis provides risk advice based on verified metrics; the Open JSON API supports zero-auth IP, domain, and ASN queries.",
     "fp.title": "Browser Fingerprint Diagnostics",
     "fp.visitorLabel": "FingerprintJS Visitor ID",
     "fp.coreTitle": "Core Fingerprint Hashes",
@@ -234,11 +251,11 @@ const I18N = {
     "api.playground": "Live Playground",
     "api.placeholder": "IP or domain (leave blank for your IP)",
     "api.requesting": "Requesting…",
+    "footer.title": "IPSpot · IP Purity & Network Diagnostics",
     "footer.privacy": "Privacy & Disclaimer",
-    "footer.contact": "Contact",
     "privacy.title": "Privacy Policy & Disclaimer",
     "privacy.p1": "IPSpot (ipspot.org) queries public IP intelligence and OpenStreetMap coordinates in real time. Browser fingerprinting and WebRTC probes run locally in your browser without storing personal identity data.",
-    "privacy.p2": "This site uses Google Analytics for anonymous traffic measurement and may display Google AdSense ads. Diagnostics are for network reference only. For inquiries, use the Contact link in the footer.",
+    "privacy.p2": "This site uses Google Analytics for anonymous traffic measurement and may display Google AdSense ads. Diagnostics are for network reference only. Contact: hezhanleiok@gmail.com",
     "score.purity": "Purity Score: <b>{n} / 100</b>",
     "score.cleanBaseline": "Clean baseline",
     "signals.count": "{n} checks",
@@ -298,6 +315,12 @@ const I18N = {
     "sig.abuse.label": "Abuse / Threat",
     "sig.abuse.desc": "Whether flagged in abuse, blocklist, or automated crawler intelligence feeds",
     "sig.abuse.descDb": "AbuseIPDB: {reports} reports in 90d ({conf}% confidence)",
+    "sig.hitSources": "Detected by: {hits}",
+    "sig.cleanChecked": "Verified via {sources} · no risk found",
+    "sig.abuseStat.db": "AbuseIPDB {n} ({c}%)",
+    "sig.abuseStat.sfs": "StopForumSpam {n}",
+    "sig.abuseStat.cve": "Shodan {n} CVE",
+    "sig.abuseStat.ipq": "ipquery risk {n}",
     "bd.baseline_residential": ["Network Baseline", "Native residential ISP baseline"],
     "bd.baseline_mobile": ["Network Baseline", "Mobile carrier CGNAT shared exit"],
     "bd.baseline_business": ["Network Baseline", "Corporate / institutional line"],
@@ -444,14 +467,31 @@ const I18N = {
     "ga.noStreet": "暂未获取到具体街道",
     "ga.fallbackSrc": "IP 基础库",
     "faq.summary": "关于 IPSpot 检测原理与常见问题",
-    "faq.q1": "原生 IP、广播 IP 与家宽判定",
-    "faq.a1": "通过对比 RIR 注册局（ARIN / RIPE / APNIC）归属国家与多库物理定位识别原生或广播属性，并融合 ASN 类型、rDNS 与 Shodan/AbuseIPDB 情报精准区分家宽与机房。",
-    "faq.q2": "人机流量比与纯净度系数",
-    "faq.a2": "接入 Cloudflare Radar 全网近 7 天真实 ASN 人机流量统计，结合网络基线、滥用举报与代理黑名单透明计算风控系数（0–100%）。",
-    "faq.q3": "浏览器指纹与隐私泄露检测",
-    "faq.a3": "集成 FingerprintJS v4、Canvas/WebGL/Audio/字体硬件指纹，以及 32 位随机子域 DNS 泄露与多 STUN WebRTC 泄露排查。",
-    "faq.q4": "IP 真实地理位置与开放 API",
-    "faq.a4": "基于目标 IP 坐标通过 OpenStreetMap 反查同区真实街道、城市、州省、邮编与时区，并提供免鉴权 JSON API 供开发者调用。",
+    "faq.count": "8 项问答",
+    "faq.tag1": "判定",
+    "faq.tag2": "评分",
+    "faq.tag3": "安全",
+    "faq.tag4": "数据",
+    "faq.tag5": "指纹",
+    "faq.tag6": "网络",
+    "faq.tag7": "地图",
+    "faq.tag8": "开发",
+    "faq.q1": "如何精准判定原生 IP、广播 IP 与家宽/机房？",
+    "faq.a1": "通过对比 RIR 注册局（ARIN / RIPE / APNIC）与 RDAP 归属国家及 12 源物理定位识别原生或广播属性，并结合 ASN 类型、云厂商关键词、rDNS 反向解析与 Shodan 特征精准区分原生家宽、双 ISP 与机房 IP。",
+    "faq.q2": "人机流量比与 IPSpot 纯净度评分如何计算？",
+    "faq.a2": "接入 Cloudflare Radar 近 7 天 ASN 全网真实人机请求占比，结合网络基线、跨区广播、代理/VPN/Tor、AbuseIPDB 与 StopForumSpam 举报记录透明加权计算 0–100% 风险值与纯净分，且不对大网家宽误伤。",
+    "faq.q3": "6 项风险信号是如何做到真实交叉验证的？",
+    "faq.a3": "每项风险信号均由 proxycheck.io、Tor 官方 Onionoo 节点库、StopForumSpam、IP2Location、ipquery.io、ip-api.com 与 Shodan 开放端口并行核验，并在卡片中直接列出实际参与核验或命中的数据源。",
+    "faq.q4": "为什么不同平台的 IP 地理位置显示不一样？",
+    "faq.a4": "各家 GeoIP 数据库（MaxMind、IP2Location、IPInfo、ipapi.is、GeoJS 等）更新周期与任播/广播收敛策略不同。IPSpot 同屏聚合最多 12 个独立地理库并以共识算法定位，避免单库偏差误判。",
+    "faq.q5": "浏览器指纹检测与人机环境比对测哪些内容？",
+    "faq.a5": "本地浏览器集成 FingerprintJS v4 及 Canvas、WebGL、Audio、字体、屏幕缩放与 WebDriver/Headless 自动化特征采集，并与出口 IP 的国家、时区、语言和 WebRTC 实时交叉比对一致性。",
+    "faq.q6": "DNS 泄露与 WebRTC 泄露检测的原理是什么？",
+    "faq.a6": "DNS 泄露通过 32 位高随机子域名探测绕过本地与运营商缓存，捕获真实出口递归解析服务器；WebRTC 泄露则并发连接多组国际 STUN 节点，排查浏览器是否绕过代理暴露真实公网 IP。",
+    "faq.q7": "IP 真实街道地址反查与地图定位如何工作？",
+    "faq.a7": "根据目标 IP 经纬度坐标，通过 OpenStreetMap Nominatim 与 Photon 逆地理编码服务实时反查同区域真实存在的街道、城市、州省、国家、邮编与时区，支持点击“换一个同区地址”及一键复制。",
+    "faq.q8": "ASN 实时监控、AI 风控诊断与开放 API 怎么用？",
+    "faq.a8": "ASN 监控直连 RIPE RIS Live 监听全球实时 BGP 路由宣告与撤销；AI 诊断基于真实检测结果输出业务可用性建议；开放 API 支持免鉴权传入 IP、域名或 ASN 查询结构化 JSON 数据。",
     "fp.title": "浏览器指纹环境检测",
     "fp.visitorLabel": "FingerprintJS 访客 ID",
     "fp.coreTitle": "核心指纹哈希",
@@ -541,11 +581,11 @@ const I18N = {
     "api.playground": "在线调试",
     "api.placeholder": "IP 或域名（留空查本机）",
     "api.requesting": "请求中…",
+    "footer.title": "IPSpot · IP 纯净度与网络环境检测",
     "footer.privacy": "隐私与免责声明",
-    "footer.contact": "联系方式",
     "privacy.title": "隐私政策与免责声明",
     "privacy.p1": "IPSpot (ipspot.org) 仅实时查询公网 IP 公开情报与 OpenStreetMap 公开地理坐标；指纹检测与 WebRTC 探测均在本地浏览器完成，不存储个人身份信息。",
-    "privacy.p2": "本站使用 Google Analytics 统计匿名访问，并可能接入 Google AdSense 广告服务。结果仅供网络诊断参考，如需联系请使用页脚的「联系方式」。",
+    "privacy.p2": "本站使用 Google Analytics 统计匿名访问，并可能接入 Google AdSense 广告服务。结果仅供网络诊断参考，联系邮箱：hezhanleiok@gmail.com",
     "score.purity": "综合纯净分：<b>{n} / 100</b>",
     "score.cleanBaseline": "基线纯净",
     "signals.count": "{n} 项检测",
@@ -605,11 +645,17 @@ const I18N = {
     "sig.abuse.label": "滥用威胁",
     "sig.abuse.desc": "是否出现在滥用、黑名单或自动化爬虫情报源中",
     "sig.abuse.descDb": "AbuseIPDB 近 90 天举报 {reports} 次（置信度 {conf}%）",
+    "sig.hitSources": "命中来源：{hits}",
+    "sig.cleanChecked": "已核验 {sources}，未见风险特征",
+    "sig.abuseStat.db": "AbuseIPDB {n}次({c}%)",
+    "sig.abuseStat.sfs": "StopForumSpam {n}次",
+    "sig.abuseStat.cve": "Shodan {n}漏洞",
+    "sig.abuseStat.ipq": "ipquery 风险 {n}",
     "bd.baseline_residential": ["网络基线", "原生住宅宽带基线"],
     "bd.baseline_mobile": ["网络基线", "移动蜂窝 CGNAT 共享出口"],
     "bd.baseline_business": ["网络基线", "企业/机构商用网络"],
     "bd.baseline_dual_isp": ["网络基线", "双 ISP / 广播托管段"],
-    "bd.baseline_datacenter": ["网络基线", "数据中心 / 云主机"],
+    "bd.baseline_datacenter": ["网络基线", "数据中心 / 云主机网络"],
     "bd.baseline_unknown": ["网络基线", "归属证据不足审慎基线"],
     "bd.radar_bot": ["ASN 机器流量", "Radar 实测该 ASN 机器流量占比 {bot}%"],
     "bd.broadcast": ["跨区广播", "注册国 {reg} ≠ 定位国 {loc}"],
@@ -751,14 +797,31 @@ const I18N = {
     "ga.noStreet": "暫未取得具體街道",
     "ga.fallbackSrc": "IP 基礎庫",
     "faq.summary": "關於 IPSpot 檢測原理與常見問題",
-    "faq.q1": "原生 IP、廣播 IP 與家寬判定",
-    "faq.a1": "對比 RIR 註冊局（ARIN / RIPE / APNIC）歸屬國家與多庫定位識別原生或廣播屬性，並融合 ASN、rDNS 與 Shodan/AbuseIPDB 情報精準區分家寬與機房。",
-    "faq.q2": "人機流量比與純淨度係數",
-    "faq.a2": "接入 Cloudflare Radar 全網近 7 天真實 ASN 人機流量統計，結合網路基線、濫用舉報與代理黑名單透明計算風控係數（0–100%）。",
-    "faq.q3": "瀏覽器指紋與隱私洩露檢測",
-    "faq.a3": "整合 FingerprintJS v4、Canvas/WebGL/Audio/字體硬體指紋，以及 32 位隨機子網域 DNS 洩露與多 STUN WebRTC 洩露排查。",
-    "faq.q4": "IP 真實地理位置與開放 API",
-    "faq.a4": "基於目標 IP 座標透過 OpenStreetMap 反查同區真實街道、城市、州省、郵遞區號與時區，並提供免鑑權 JSON API。",
+    "faq.count": "8 項問答",
+    "faq.tag1": "判定",
+    "faq.tag2": "評分",
+    "faq.tag3": "安全",
+    "faq.tag4": "數據",
+    "faq.tag5": "指紋",
+    "faq.tag6": "網路",
+    "faq.tag7": "地圖",
+    "faq.tag8": "開發",
+    "faq.q1": "如何精準判定原生 IP、廣播 IP 與家寬/機房？",
+    "faq.a1": "對比 RIR 註冊局（ARIN / RIPE / APNIC）與 RDAP 歸屬國家及 12 源定位識別原生或廣播屬性，並融合 ASN 類型、雲廠商關鍵字、rDNS 與 Shodan 特徵精準區分原生家寬、雙 ISP 與機房 IP。",
+    "faq.q2": "人機流量比與 IPSpot 純淨度評分如何計算？",
+    "faq.a2": "接入 Cloudflare Radar 近 7 天 ASN 全網真實人機請求佔比，結合網路基線、跨區廣播、代理/VPN/Tor、AbuseIPDB 與 StopForumSpam 舉報記錄透明計算 0–100% 風險值與純淨分。",
+    "faq.q3": "6 項風險信號是如何做到真實交叉驗證的？",
+    "faq.a3": "每項風險信號均由 proxycheck.io、Tor 官方 Onionoo 節點庫、StopForumSpam、IP2Location、ipquery.io、ip-api.com 與 Shodan 連接埠並行核驗，並直接顯示參與核驗或命中的資料來源。",
+    "faq.q4": "為什麼不同平台的 IP 地理位置顯示不一樣？",
+    "faq.a4": "各家 GeoIP 資料庫（MaxMind、IP2Location、IPInfo、ipapi.is、GeoJS 等）更新週期與任播策略不同。IPSpot 同屏聚合最多 12 個獨立地理庫並以共識演算法定位，避免單庫偏差誤判。",
+    "faq.q5": "瀏覽器指紋檢測與人機環境比對測哪些內容？",
+    "faq.a5": "本地瀏覽器整合 FingerprintJS v4 與 Canvas、WebGL、Audio、字體、螢幕縮放及 WebDriver/Headless 特徵採集，並與出口 IP 的國家、時區、語言和 WebRTC 即時交叉比對一致性。",
+    "faq.q6": "DNS 洩漏與 WebRTC 洩漏檢測的原理是什麼？",
+    "faq.a6": "DNS 洩漏透過 32 位隨機子網域探測繞過快取，捕獲真實出口遞迴解析伺服器；WebRTC 洩漏則併發連接多組國際 STUN 節點，排查瀏覽器是否繞過代理暴露真實公網 IP。",
+    "faq.q7": "IP 真實街道地址反查與地圖定位如何運作？",
+    "faq.a7": "根據目標 IP 經緯度座標，透過 OpenStreetMap Nominatim 與 Photon 逆地理編碼即時反查同區真實街道、城市、州省、國家、郵遞區號與時區，支援切換附近地址與一鍵複製。",
+    "faq.q8": "ASN 即時監控、AI 風控診斷與開放 API 怎麼用？",
+    "faq.a8": "ASN 監控直連 RIPE RIS Live 監聽全球即時 BGP 路由宣告與撤銷；AI 診斷依據真實檢測結果輸出可用性建議；開放 API 支援免鑑權查詢 IP、網域或 ASN 結構化 JSON 資料。",
     "fp.title": "瀏覽器指紋環境檢測",
     "fp.visitorLabel": "FingerprintJS 訪客 ID",
     "fp.coreTitle": "核心指紋雜湊",
@@ -848,11 +911,11 @@ const I18N = {
     "api.playground": "線上除錯",
     "api.placeholder": "IP 或網域（留空查本機）",
     "api.requesting": "請求中…",
+    "footer.title": "IPSpot · IP 純淨度與網路環境檢測",
     "footer.privacy": "隱私與免責聲明",
-    "footer.contact": "聯絡方式",
     "privacy.title": "隱私權政策與免責聲明",
     "privacy.p1": "IPSpot (ipspot.org) 僅即時查詢公網 IP 公開情報與 OpenStreetMap 公開地理座標；指紋檢測與 WebRTC 探測均在本機瀏覽器完成，不儲存個人身份資訊。",
-    "privacy.p2": "本站使用 Google Analytics 統計匿名造訪，並可能接入 Google AdSense 廣告服務。結果僅供網路診斷參考，如需聯繫請使用頁尾的「聯絡方式」。",
+    "privacy.p2": "本站使用 Google Analytics 統計匿名造訪，並可能接入 Google AdSense 廣告服務。結果僅供網路診斷參考，聯繫信箱：hezhanleiok@gmail.com",
     "score.purity": "綜合純淨分：<b>{n} / 100</b>",
     "score.cleanBaseline": "基線純淨",
     "signals.count": "{n} 項檢測",
@@ -912,6 +975,12 @@ const I18N = {
     "sig.abuse.label": "濫用威脅",
     "sig.abuse.desc": "是否出現在濫用、黑名單或自動化爬蟲情報源中",
     "sig.abuse.descDb": "AbuseIPDB 近 90 天舉報 {reports} 次（置信度 {conf}%）",
+    "sig.hitSources": "命中來源：{hits}",
+    "sig.cleanChecked": "已核驗 {sources}，未見風險特徵",
+    "sig.abuseStat.db": "AbuseIPDB {n}次({c}%)",
+    "sig.abuseStat.sfs": "StopForumSpam {n}次",
+    "sig.abuseStat.cve": "Shodan {n}漏洞",
+    "sig.abuseStat.ipq": "ipquery 風險 {n}",
     "bd.baseline_residential": ["網路基線", "原生住宅寬頻基線"],
     "bd.baseline_mobile": ["網路基線", "行動電信 CGNAT 共享出口"],
     "bd.baseline_business": ["網路基線", "企業/機構商用網路"],
@@ -1058,14 +1127,31 @@ const I18N = {
     "ga.noStreet": "通り情報なし",
     "ga.fallbackSrc": "IP データベース",
     "faq.summary": "IPSpot の仕組みとよくある質問",
-    "faq.q1": "ネイティブ / ブロードキャスト・住宅回線判定",
-    "faq.a1": "RIR 登録国（ARIN/RIPE/APNIC）と複数 GeoIP データベースを照合し、ASN 種別・rDNS・Shodan・AbuseIPDB を組み合わせて住宅 ISP とデータセンターを高精度に区別します。",
-    "faq.q2": "人間/Bot トラフィック比率と純度スコア",
-    "faq.a2": "Cloudflare Radar の過去 7 日間 ASN Bot 統計を利用し、回線ベースラインや不正報告と合わせて 0–100% のリスク係数を算出します。",
-    "faq.q3": "ブラウザ指紋とリーク検出",
-    "faq.a3": "FingerprintJS v4・Canvas/WebGL/Audio/フォント指紋、32 文字ランダムサブドメインによる DNS リーク検査、複数 STUN による WebRTC 検査を提供します。",
-    "faq.q4": "実住所逆ジオコーディングとオープン API",
-    "faq.a4": "IP 座標から OpenStreetMap で周辺の実在する番地・市区町村・郵便番号を取得でき、開発者向け無料 JSON API も利用できます。",
+    "faq.count": "8つの質問",
+    "faq.tag1": "判定",
+    "faq.tag2": "スコア",
+    "faq.tag3": "安全",
+    "faq.tag4": "位置情報",
+    "faq.tag5": "指紋",
+    "faq.tag6": "通信",
+    "faq.tag7": "マップ",
+    "faq.tag8": "API",
+    "faq.q1": "ネイティブ / ブロードキャスト・住宅回線はどう判定されますか？",
+    "faq.a1": "RIR 登録国（ARIN/RIPE/APNIC）・RDAP 情報と 12 種類の GeoIP データベースを照合し、ASN 種別・クラウド判定・rDNS・Shodan 特徴を組み合わせて住宅回線とデータセンターを正確に識別します。",
+    "faq.q2": "人間/Bot トラフィック比率と純度スコアの算出方法は？",
+    "faq.a2": "Cloudflare Radar の過去 7 日間 ASN Bot 統計と、回線ベースライン、プロキシ/VPN/Tor、AbuseIPDB、StopForumSpam 報告を統合して透明に 0–100% スコアを算出します。",
+    "faq.q3": "6 項目のリスク信号はどのように検証されていますか？",
+    "faq.a3": "proxycheck.io、Tor 公式 Onionoo ノード、StopForumSpam、IP2Location、ipquery.io、ip-api.com、Shodan ポートを並列検証し、一致または確認したソースをそのまま表示します。",
+    "faq.q4": "サイトによって IP の位置情報が異なるのはなぜですか？",
+    "faq.a4": "GeoIP 各社（MaxMind、IP2Location、IPInfo、ipapi.is、GeoJS など）で更新周期やエニーキャスト処理が異なります。IPSpot は最大 12 ソースを並べてコンセンサス判定を行います。",
+    "faq.q5": "ブラウザ指紋・環境整合性チェックでは何を調べますか？",
+    "faq.a5": "FingerprintJS v4・Canvas・WebGL・Audio・フォント・画面倍率・WebDriver 兆候をローカル計測し、出口 IP の国・タイムゾーン・言語・WebRTC と照合します。",
+    "faq.q6": "DNS リークと WebRTC リーク検査の仕組みは？",
+    "faq.a6": "DNS 検査は 32 文字ランダムサブドメインでキャッシュを回避して実リゾルバを特定し、WebRTC 検査は複数 STUN サーバーでパブリック IP の露出有無を確認します。",
+    "faq.q7": "実住所の逆ジオコーディングとマップ表示の仕組みは？",
+    "faq.a7": "IP 座標から OpenStreetMap Nominatim と Photon を用いて周辺の実在する番地・市区町村・都道府県・郵便番号を取得し、ワンクリックでコピーできます。",
+    "faq.q8": "ASN 監視・AI 診断・オープン API の用途は？",
+    "faq.a8": "ASN 監視は RIPE RIS Live のリアルタイム BGP 経路更新を受信し、AI 診断は検証済み指標に基づく実務アドバイスを提供し、API は認証不要で JSON 取得が可能です。",
     "fp.title": "ブラウザ指紋・環境診断",
     "fp.visitorLabel": "FingerprintJS ビジター ID",
     "fp.coreTitle": "コア指紋ハッシュ",
@@ -1155,11 +1241,11 @@ const I18N = {
     "api.playground": "オンラインテスト",
     "api.placeholder": "IP またはドメイン（空欄で自分の IP）",
     "api.requesting": "リクエスト中…",
+    "footer.title": "IPSpot · IP 純度・ネットワーク環境診断",
     "footer.privacy": "プライバシー・免責事項",
-    "footer.contact": "お問い合わせ",
     "privacy.title": "プライバシーポリシーと免責事項",
     "privacy.p1": "IPSpot (ipspot.org) は公開 IP 情報と OpenStreetMap 座標をリアルタイム参照します。ブラウザ指紋および WebRTC 検査は端末内で完結し、個人情報は保存しません。",
-    "privacy.p2": "当サイトは匿名アクセス解析に Google Analytics を利用し、Google AdSense 広告を掲載する場合があります。結果はネットワーク診断の参考情報です。お問い合わせはフッターの「お問い合わせ」をご利用ください。",
+    "privacy.p2": "当サイトは匿名アクセス解析に Google Analytics を利用し、Google AdSense 広告を掲載する場合があります。連絡先：hezhanleiok@gmail.com",
     "score.purity": "総合純度スコア：<b>{n} / 100</b>",
     "score.cleanBaseline": "クリーンなベースライン",
     "signals.count": "{n} 項目検査",
@@ -1219,6 +1305,12 @@ const I18N = {
     "sig.abuse.label": "不正・脅威",
     "sig.abuse.desc": "不正利用・ブラックリスト・クローラー情報源に該当するか",
     "sig.abuse.descDb": "AbuseIPDB 過去90日 {reports} 件報告（信頼度 {conf}%）",
+    "sig.hitSources": "該当ソース：{hits}",
+    "sig.cleanChecked": "{sources} で検証済み・異常なし",
+    "sig.abuseStat.db": "AbuseIPDB {n}件({c}%)",
+    "sig.abuseStat.sfs": "StopForumSpam {n}件",
+    "sig.abuseStat.cve": "Shodan {n}件脆弱性",
+    "sig.abuseStat.ipq": "ipquery リスク {n}",
     "bd.baseline_residential": ["回線ベースライン", "ネイティブ住宅 ISP 基準"],
     "bd.baseline_mobile": ["回線ベースライン", "モバイル CGNAT 共有出口"],
     "bd.baseline_business": ["回線ベースライン", "法人・組織回線"],
@@ -1246,7 +1338,7 @@ function resolveInitialLang() {
   const pageDefault = document.documentElement.getAttribute("data-default-lang") || (isEnPath() ? "en" : "zh-CN");
   try {
     const saved = localStorage.getItem(LANG_KEY);
-    if (pageDefault === "zh-CN" && (saved === "zh-TW" || saved === "ja")) return saved;
+    if (saved === "zh-TW" || saved === "ja") return saved;
   } catch {}
   return I18N[pageDefault] ? pageDefault : "zh-CN";
 }
@@ -1334,10 +1426,28 @@ function localizedBreakdown(item) {
   return { label: pair[0], reason };
 }
 
+const LANG_LABELS = {
+  "zh-CN": { "zh-CN": "中国", "zh-TW": "繁體", en: "英文", ja: "日文" },
+  "zh-TW": { "zh-CN": "中國", "zh-TW": "繁體", en: "英文", ja: "日文" },
+  en: { "zh-CN": "CN", "zh-TW": "TW", en: "EN", ja: "JA" },
+  ja: { "zh-CN": "CN", "zh-TW": "TW", en: "EN", ja: "JP" },
+};
+
+function renderLangMenu() {
+  const labels = LANG_LABELS[state.lang] || LANG_LABELS.en;
+  document.querySelectorAll(".lang-opt").forEach((btn) => {
+    const code = btn.dataset.lang;
+    const isActive = code === state.lang;
+    btn.classList.toggle("active", isActive);
+    btn.setAttribute("aria-selected", String(isActive));
+    const span = btn.querySelector(".lang-opt-name");
+    if (span && labels[code]) span.textContent = labels[code];
+  });
+}
+
 function applyStaticI18n() {
   document.documentElement.setAttribute("lang", state.lang);
-  const sel = $("lang-select");
-  if (sel) sel.value = state.lang;
+  renderLangMenu();
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     const key = el.getAttribute("data-i18n");
     if (key) el.textContent = t(key);
@@ -1349,17 +1459,20 @@ function applyStaticI18n() {
   syncThemeUI();
   renderHistory();
   updateSeoTitle(state.currentView, state.current);
+  if (typeof moveGlider === "function") requestAnimationFrame(moveGlider);
 }
 
 function handleLanguageChange(nextLang) {
   if (!I18N[nextLang]) return;
   try { localStorage.setItem(LANG_KEY, nextLang); } catch {}
   const hash = location.hash || "";
-  const targetPath = nextLang === "en" ? "/en/" : "/";
-  const currentPath = location.pathname.replace(/\/index\.html$/, "/");
 
-  if (currentPath !== targetPath) {
-    location.href = `${targetPath}${hash}`;
+  if (nextLang === "en" && !isEnPath()) {
+    location.href = `/en/${hash}`;
+    return;
+  }
+  if (nextLang === "zh-CN" && isEnPath()) {
+    location.href = `/${hash}`;
     return;
   }
 
@@ -1370,6 +1483,7 @@ function handleLanguageChange(nextLang) {
   else if (state.currentView === "fp") fpEngine.renderPage();
   if (exit.started) exit.refreshLabels();
   if (asn.started) asn.render();
+  if (state.currentView === "api") api.init();
 }
 
 const SIGNAL_ORDER = ["proxy", "vpn", "tor", "datacenter", "mobile", "abuse"];
@@ -1463,8 +1577,13 @@ function currentTheme() {
 }
 function syncThemeUI() {
   const th = currentTheme();
-  $("theme-label").textContent = th === "dark" ? t("theme.light") : t("theme.dark");
-  $("meta-theme-color").setAttribute("content", th === "light" ? "#F5F7FA" : "#070B14");
+  const nextLabel = th === "dark" ? t("theme.light") : t("theme.dark");
+  const btn = $("theme-toggle");
+  if (btn) {
+    btn.setAttribute("title", nextLabel);
+    btn.setAttribute("aria-label", nextLabel);
+  }
+  $("meta-theme-color").setAttribute("content", th === "light" ? "#F4F7FB" : "#070B14");
 }
 function toggleTheme() {
   const next = currentTheme() === "dark" ? "light" : "dark";
@@ -1473,15 +1592,70 @@ function toggleTheme() {
   syncThemeUI();
 }
 
-/* ================= Collapsible Helper ================= */
+/* ================= Smooth Collapsible & Scroll Reveal ================= */
+function isDrawerOpen(box) {
+  if (!box) return false;
+  return box.classList.contains("smooth-collapse") ? box.classList.contains("open") : !box.hidden;
+}
+function setDrawerOpen(box, open, btn) {
+  if (!box) return;
+  if (box.classList.contains("smooth-collapse")) {
+    box.classList.toggle("open", open);
+    box.setAttribute("aria-hidden", String(!open));
+  } else {
+    box.hidden = !open;
+  }
+  if (btn) btn.setAttribute("aria-expanded", String(open));
+}
 function bindToggle(btnId, boxId, onOpen) {
   const btn = $(btnId); const box = $(boxId);
   if (!btn || !box) return;
   btn.addEventListener("click", () => {
-    const open = box.hidden;
-    box.hidden = !open;
-    btn.setAttribute("aria-expanded", String(open));
+    const open = !isDrawerOpen(box);
+    setDrawerOpen(box, open, btn);
     if (open && onOpen) onOpen();
+  });
+}
+
+let revealScrollDir = "down";
+let revealLastY = typeof window !== "undefined" ? window.scrollY : 0;
+let revealObserver = null;
+function initRevealObserver() {
+  if (revealObserver) return;
+  window.addEventListener("scroll", () => {
+    const cur = window.scrollY;
+    revealScrollDir = cur >= revealLastY ? "down" : "up";
+    revealLastY = cur;
+  }, { passive: true });
+  if (typeof IntersectionObserver !== "function") return;
+  revealObserver = new IntersectionObserver((entries) => {
+    for (const en of entries) {
+      if (en.isIntersecting) {
+        en.target.classList.remove("from-up");
+        en.target.classList.add("in");
+      } else if (!en.target.closest("[hidden]")) {
+        en.target.classList.remove("in");
+        en.target.classList.toggle("from-up", revealScrollDir === "up");
+      }
+    }
+  }, { threshold: 0.06, rootMargin: "0px 0px -16px 0px" });
+}
+function observeReveals() {
+  initRevealObserver();
+  const els = document.querySelectorAll(".reveal");
+  if (!revealObserver) {
+    els.forEach((el) => el.classList.add("in"));
+    return;
+  }
+  const vh = window.innerHeight || 800;
+  els.forEach((el) => {
+    if (el.closest("[hidden]")) return;
+    revealObserver.observe(el);
+    const r = el.getBoundingClientRect();
+    if (r.top < vh && r.bottom > 0) {
+      el.classList.remove("from-up");
+      el.classList.add("in");
+    }
   });
 }
 
@@ -1768,8 +1942,10 @@ const fpEngine = {
     const isRadar = r?.humanRatio?.source === "cloudflare-radar";
     const human = typeof r?.humanRatio?.human === "number" ? r.humanRatio.human : 50;
     const bot = typeof r?.humanRatio?.bot === "number" ? r.humanRatio.bot : Number((100 - human).toFixed(2));
-    $("hb-human-bar").style.width = `${human}%`;
-    $("hb-bot-bar").style.width = `${bot}%`;
+    requestAnimationFrame(() => {
+      $("hb-human-bar").style.width = `${human}%`;
+      $("hb-bot-bar").style.width = `${bot}%`;
+    });
     $("hb-human-pct").textContent = isRadar ? `${human.toFixed(2)}%` : `${Math.round(human)}%`;
     $("hb-bot-pct").textContent = isRadar ? `${bot.toFixed(2)}%` : `${Math.round(bot)}%`;
     const srcEl = $("hb-source");
@@ -1958,13 +2134,13 @@ function renderMap(r) {
   fb.hidden = true;
 
   if (!state.map) {
-    state.map = L.map("map", { scrollWheelZoom: false }).setView([loc.lat, loc.lon], 11);
+    state.map = L.map("map", { scrollWheelZoom: true }).setView([loc.lat, loc.lon], 9);
     L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
       attribution: "Tiles &copy; Esri",
       maxZoom: 17,
     }).addTo(state.map);
   } else {
-    state.map.setView([loc.lat, loc.lon], 11);
+    state.map.setView([loc.lat, loc.lon], 9);
   }
 
   if (state.marker) state.marker.remove();
@@ -2007,9 +2183,25 @@ function renderSignals(r) {
   $("signals-count").textContent = t("signals.count", { n: finalList.length });
   $("signals-grid").innerHTML = finalList.map((s) => {
     const label = t(`sig.${s.key}.label`) || s.label;
-    const desc = (s.key === "abuse" && r.abuse)
-      ? t("sig.abuse.descDb", { reports: r.abuse.reports, conf: r.abuse.confidence })
-      : (t(`sig.${s.key}.desc`) || s.desc);
+    let desc = "";
+    if (s.detected && Array.isArray(s.hits) && s.hits.length) {
+      desc = t("sig.hitSources", { hits: s.hits.join(" · ") });
+    } else if (s.key === "abuse" && s.meta) {
+      const parts = [];
+      if (typeof s.meta.abuseReports === "number") parts.push(t("sig.abuseStat.db", { n: s.meta.abuseReports, c: s.meta.abuseConf ?? 0 }));
+      if (typeof s.meta.sfsFreq === "number") parts.push(t("sig.abuseStat.sfs", { n: s.meta.sfsFreq }));
+      if (typeof s.meta.vulns === "number") parts.push(t("sig.abuseStat.cve", { n: s.meta.vulns }));
+      if (typeof s.meta.ipqRisk === "number") parts.push(t("sig.abuseStat.ipq", { n: s.meta.ipqRisk }));
+      desc = parts.length ? parts.join(" · ") : (s.detail || s.desc || t("sig.abuse.desc"));
+    } else if (s.key === "abuse" && s.detail) {
+      desc = s.detail;
+    } else if (!s.detected && Array.isArray(s.checked) && s.checked.length) {
+      desc = t("sig.cleanChecked", { sources: s.checked.join(" · ") });
+    } else if (s.key === "abuse" && r.abuse) {
+      desc = t("sig.abuse.descDb", { reports: r.abuse.reports, conf: r.abuse.confidence });
+    } else {
+      desc = s.desc || t(`sig.${s.key}.desc`);
+    }
     return `
       <div class="signal ${s.detected ? "hit" : "clean"}">
         <div class="signal-icon">${SIGNAL_ICONS[s.key] || SIGNAL_ICONS.abuse}</div>
@@ -2028,36 +2220,48 @@ function renderSignals(r) {
 function renderMultiGeo(r) {
   const list = r.location.multiSource || [];
   const box = $("r-geo-list");
+  const extraBox = $("r-geo-extra");
+  const extraWrap = $("geo-extra-wrap");
   const moreBtn = $("btn-geo-more");
-  const limit = 3;
+  const limit = 4;
+
+  const mkGeoLine = (g) => {
+    const place = [countryShort(g.countryCode, g.country), g.region, g.city].filter(Boolean).join(", ");
+    return `<div class="geo-line"><span class="geo-src">${esc(g.source)}</span><span class="geo-place">${flagHtml(g.countryCode)}<span>${esc(place)}</span></span></div>`;
+  };
 
   if (!list.length) {
     box.innerHTML = `<div class="geo-line"><span>${esc(countryName(r.location.countryCode, r.location.country))}</span></div>`;
+    if (extraBox) extraBox.innerHTML = "";
+    setDrawerOpen(extraWrap, false, moreBtn);
     moreBtn.hidden = true;
     return;
   }
 
-  box.innerHTML = list.map((g, idx) => {
-    const place = [countryShort(g.countryCode, g.country), g.region, g.city].filter(Boolean).join(", ");
-    const extraAttr = idx >= limit ? ' class="geo-line geo-extra" hidden' : ' class="geo-line"';
-    return `<div${extraAttr}><span class="geo-src">${esc(g.source)}</span><span class="geo-place">${flagHtml(g.countryCode)}<span>${esc(place)}</span></span></div>`;
-  }).join("");
+  box.innerHTML = list.slice(0, limit).map(mkGeoLine).join("");
+  const extraList = list.slice(limit);
 
-  if (list.length > limit) {
-    const extraCount = list.length - limit;
+  if (extraList.length && extraBox && extraWrap) {
+    extraBox.innerHTML = extraList.map(mkGeoLine).join("");
+    const wasOpen = isDrawerOpen(extraWrap);
     moreBtn.hidden = false;
-    moreBtn.dataset.expanded = "0";
-    moreBtn.textContent = t("btn.showMore", { n: extraCount });
+    moreBtn.dataset.count = String(extraList.length);
+    setDrawerOpen(extraWrap, wasOpen, moreBtn);
+    moreBtn.textContent = wasOpen ? t("btn.collapse") : t("btn.showMore", { n: extraList.length });
   } else {
+    if (extraBox) extraBox.innerHTML = "";
+    setDrawerOpen(extraWrap, false, moreBtn);
     moreBtn.hidden = true;
   }
 }
 
 function renderReport(r) {
   const sameIp = state.current && state.current.ip === r.ip;
+  const wasHidden = $("report").hidden;
   state.current = r;
   if (!sameIp) state.aiLoadedKey = null;
   $("report").hidden = false;
+  if (wasHidden) requestAnimationFrame(observeReveals);
   updateSeoTitle("query", r);
 
   $("r-flag").innerHTML = flagHtml(r.location.countryCode, 80) || "🌐";
@@ -2136,7 +2340,13 @@ function renderReport(r) {
 
   const fraud = r.scores.fraud;
   const pin = $("fraud-marker");
-  pin.style.left = `${Math.max(2, Math.min(98, fraud))}%`;
+  const pinLeft = `${Math.max(2, Math.min(98, fraud))}%`;
+  if (wasHidden) {
+    pin.style.left = "0%";
+    requestAnimationFrame(() => requestAnimationFrame(() => { pin.style.left = pinLeft; }));
+  } else {
+    pin.style.left = pinLeft;
+  }
   pin.classList.toggle("edge-left", fraud <= 15);
   pin.classList.toggle("edge-right", fraud >= 85);
 
@@ -2153,7 +2363,7 @@ function renderReport(r) {
 
   const aiKey = `${state.lang}:${r.ip}`;
   if (state.aiLoadedKey !== aiKey) {
-    $("ai-expand").hidden = true;
+    setDrawerOpen($("ai-expand"), false, $("ai-run"));
     $("ai-provider").hidden = true;
     $("ai-content").innerHTML = "";
     $("ai-run").disabled = false;
@@ -2205,17 +2415,19 @@ function mdListToHtml(md) {
 async function runAiDeep() {
   if (!state.current) return;
   const aiKey = `${state.lang}:${state.current.ip}`;
+  const expandBox = $("ai-expand");
+  const aiBtn = $("ai-run");
   if (state.aiLoadedKey === aiKey && $("ai-content").innerHTML) {
-    const nextHidden = !$("ai-expand").hidden;
-    $("ai-expand").hidden = nextHidden;
-    $("ai-run").textContent = nextHidden ? t("btn.aiView") : t("btn.aiHide");
+    const nextOpen = !isDrawerOpen(expandBox);
+    setDrawerOpen(expandBox, nextOpen, aiBtn);
+    aiBtn.textContent = nextOpen ? t("btn.aiHide") : t("btn.aiView");
     return;
   }
 
-  $("ai-expand").hidden = false;
+  setDrawerOpen(expandBox, true, aiBtn);
   $("ai-loading").hidden = false;
   $("ai-content").innerHTML = "";
-  $("ai-run").disabled = true;
+  aiBtn.disabled = true;
   try {
     const res = await fetchTimeout(`${API}?action=ai`, 16000, {
       method: "POST",
@@ -2228,13 +2440,13 @@ async function runAiDeep() {
     $("ai-provider").hidden = false;
     $("ai-provider").textContent = `${d.provider}${d.cached ? ` · ${t("ai.cached")}` : ""}`;
     $("ai-content").innerHTML = mdListToHtml(d.text || "");
-    $("ai-run").textContent = t("btn.aiHide");
+    aiBtn.textContent = t("btn.aiHide");
   } catch (e) {
     $("ai-content").textContent = e.message || t("ai.unavailable");
-    $("ai-run").textContent = t("btn.aiRetry");
+    aiBtn.textContent = t("btn.aiRetry");
   } finally {
     $("ai-loading").hidden = true;
-    $("ai-run").disabled = false;
+    aiBtn.disabled = false;
   }
 }
 
@@ -2643,18 +2855,28 @@ const api = {
   },
 };
 
-/* ================= Router & Mobile Nav Auto-Center ================= */
+/* ================= Router, Nav Glider & FAQ Accordion ================= */
 const VIEWS = ["query", "fp", "asn", "dns", "webrtc", "api"];
+function moveGlider() {
+  const wrap = $("nav-links");
+  const glider = $("nav-glider");
+  const active = wrap && wrap.querySelector("a.active");
+  if (!wrap || !glider || !active) return;
+  glider.style.width = `${active.offsetWidth}px`;
+  glider.style.transform = `translate(${active.offsetLeft}px, -50%)`;
+  glider.classList.add("ready");
+}
 function showView(view) {
   state.currentView = view;
   for (const v of VIEWS) $(`view-${v}`).hidden = v !== view;
   document.querySelectorAll("[data-nav]").forEach((a) => a.classList.toggle("active", a.dataset.route === view));
-  const navLinks = document.querySelector(".nav-links");
+  const navLinks = $("nav-links") || document.querySelector(".nav-links");
   const active = navLinks?.querySelector("a.active");
   if (navLinks && active) {
     const targetLeft = active.offsetLeft - navLinks.clientWidth / 2 + active.clientWidth / 2;
     navLinks.scrollTo({ left: Math.max(0, targetLeft), behavior: "smooth" });
   }
+  requestAnimationFrame(moveGlider);
   updateSeoTitle(view, state.current);
   window.scrollTo({ top: 0, behavior: "auto" });
   if (view === "query" && state.map) setTimeout(() => state.map.invalidateSize(), 180);
@@ -2683,8 +2905,31 @@ function route() {
 
 /* ================= Event Bindings ================= */
 $("theme-toggle").addEventListener("click", toggleTheme);
-if ($("lang-select")) {
-  $("lang-select").addEventListener("change", (e) => handleLanguageChange(e.target.value));
+if ($("lang-btn") && $("lang-menu")) {
+  const langBtn = $("lang-btn");
+  const langMenu = $("lang-menu");
+  const closeLangMenu = () => {
+    langMenu.hidden = true;
+    langBtn.setAttribute("aria-expanded", "false");
+  };
+  langBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const open = langMenu.hidden;
+    langMenu.hidden = !open;
+    langBtn.setAttribute("aria-expanded", String(open));
+  });
+  langMenu.querySelectorAll(".lang-opt").forEach((opt) => {
+    opt.addEventListener("click", () => {
+      closeLangMenu();
+      handleLanguageChange(opt.dataset.lang);
+    });
+  });
+  document.addEventListener("click", (e) => {
+    if (!langMenu.hidden && !$("lang-switch")?.contains(e.target)) closeLangMenu();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !langMenu.hidden) closeLangMenu();
+  });
 }
 
 bindToggle("btn-asn-more", "asn-more");
@@ -2696,11 +2941,21 @@ bindToggle("btn-ping-toggle", "ping-panel", () => { if (!state.pingRan) runLaten
 
 $("btn-geo-more").addEventListener("click", () => {
   const btn = $("btn-geo-more");
-  const extras = $("r-geo-list").querySelectorAll(".geo-extra");
-  const open = btn.dataset.expanded !== "1";
-  extras.forEach((el) => { el.hidden = !open; });
-  btn.dataset.expanded = open ? "1" : "0";
-  btn.textContent = open ? t("btn.collapse") : t("btn.showMore", { n: extras.length });
+  const wrap = $("geo-extra-wrap");
+  const count = Number(btn.dataset.count) || $("r-geo-extra")?.children.length || 0;
+  const open = !isDrawerOpen(wrap);
+  setDrawerOpen(wrap, open, btn);
+  btn.textContent = open ? t("btn.collapse") : t("btn.showMore", { n: count });
+});
+
+document.querySelectorAll(".faq-item").forEach((item) => {
+  const btn = item.querySelector(".faq-q");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    const open = !item.classList.contains("is-open");
+    item.classList.toggle("is-open", open);
+    btn.setAttribute("aria-expanded", String(open));
+  });
 });
 
 $("search-form").addEventListener("submit", (e) => {
@@ -2737,7 +2992,7 @@ document.querySelectorAll(".ga-item").forEach((btn) => {
   });
 });
 
-$("exit-run").addEventListener("click", () => { exit.run(); if (!$("ping-panel").hidden) runLatency(); });
+$("exit-run").addEventListener("click", () => { exit.run(); if (isDrawerOpen($("ping-panel"))) runLatency(); });
 $("exit-v4-copy").addEventListener("click", () => { const v = exit._vals.v4?.ip; if (v) copyText(v, t("toast.copiedV4")); });
 $("exit-v6-copy").addEventListener("click", () => { const v = exit._vals.v6?.ip; if (v) copyText(v, t("toast.copiedV6")); });
 $("fp-page-run").addEventListener("click", async () => {
@@ -2759,7 +3014,13 @@ $("open-privacy").addEventListener("click", () => $("privacy-dialog").showModal(
 $("close-privacy").addEventListener("click", () => $("privacy-dialog").close());
 $("privacy-dialog").addEventListener("click", (e) => { if (e.target === $("privacy-dialog")) $("privacy-dialog").close(); });
 window.addEventListener("hashchange", route);
+window.addEventListener("resize", moveGlider);
+window.addEventListener("load", moveGlider);
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(moveGlider).catch(() => {});
+}
 
 /* Init */
 applyStaticI18n();
 route();
+observeReveals();

@@ -75,8 +75,9 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    let path = normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, "");
+    let path = normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, "").replace(/([/\\])+$/, "");
     if (path === "") path = "index.html";
+    else if (path === "en") path = join("en", "index.html");
     const file = join(root, path);
     if (!file.startsWith(root)) {
       res.writeHead(403);

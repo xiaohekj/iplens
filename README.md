@@ -25,89 +25,80 @@
 
 ## 简体中文
 
-### 核心能力与真实数据源
+IPSpot 是一个轻量、无数据库依赖的 IP 情报与浏览器网络环境诊断系统，默认以简体中文入口（`/`）与英文子入口（`/en/`）提供双语 SEO 页面，并支持简体中文、繁體中文、English 与日本語实时切换。
 
-- **多源防误判引擎**：并行聚合 `ipapi.is`、`ipquery.io`、`ip-api.com`、`ipwho.is` 与官方 `RDAP`，引入云商/IDC 关键词与 `rDNS` 一票否决，精准区分原生家宽、双 ISP 商宽托管与数据中心机房，支持直接输入域名自动解析 IP。
-- **透明风险评分**：0–100% 风险值与信任分，逐项列出扣分依据（网络基线、跨区广播、代理/VPN/Tor、滥用与爬虫信号）。
-- **所属企业与历史记录**：实时拉取 RDAP 网段名、RIR 机构、注册/更新日期及 `RIPEstat` BGP 历史路由宣告。
-- **人机对比与浏览器指纹**：本地实时采集 WebDriver、Headless 特征、Canvas/WebGL 指纹、时区与语言设置，与出口 IP 交叉核验。
-- **免费全球可用 AI 诊断**：同源后端中转（`POST /functions/v1/app?action=ai`），国内直连与海外均可正常使用。
-- **隐私与网络工具**：随机子域防缓存 DNS 泄露检测、多 STUN WebRTC 泄露检测、IPv4/IPv6 双栈出口与主流平台连通延迟探测、RIPE RIS Live 实时 BGP 监控。
+### 核心能力
 
-### 目录结构
+| 模块 | 实现方式与覆盖范围 |
+| :--- | :--- |
+| **多源位置共识** | 并发聚合 **MaxMind、IP2Location.io、IPInfo.io、ipapi.is、ipwho.is、ipquery.io、ip-api.com、IP.SB、IP.Guide、GeoJS、FreeIPAPI、ipapi.co** 共 12 个地理库，共识校准并支持同屏展开对照。 |
+| **原生 / 广播与家宽判定** | 联合 `RDAP`、`RIPEstat` RIR 历史与 ASN/rDNS 关键词，区分原生家宽、双 ISP、企业专线、移动网络与机房节点，直接输入域名时自动经 DoH 解析。 |
+| **6 项风险信号交叉核验** | 并行核验 `proxycheck.io`、Tor 官方 `Onionoo`、`StopForumSpam`、`AbuseIPDB`、`Shodan InternetDB` 与多家风控库，展示实际参与核验或命中的源。 |
+| **人机流量比与纯净评分** | 接入 `Cloudflare Radar` 近 7 天 ASN 人机请求占比（缺省时按网络模型估算），输出 0–100% 风险系数与逐项扣分明细，不因大网均值误伤纯净家宽。 |
+| **交互地图与真实街区反查** | 集成 `Leaflet`（`Esri World_Street_Map`）与滚轮缩放定位；基于坐标通过 `OpenStreetMap Nominatim`、`Photon` 与 `BigDataCloud` 反查同区真实街道、邮编与时区。 |
+| **客户端隐私与路由工具** | 内置 `FingerprintJS v4`（Canvas / WebGL / Audio / 字体 / WebDriver 检测）、32 位随机子域 DNS 泄露探测、多 STUN WebRTC 检测、双栈出口测速与 `RIPE RIS Live` BGP 监控。 |
+| **多模型容灾 AI 诊断** | 同源后端（`POST /functions/v1/app?action=ai`）按序容灾智谱 GLM、SiliconFlow、Groq、Cloudflare Workers AI，未配置 Key 时自动由内置规则引擎响应。 |
+
+### 项目结构
 
 ```text
-web/                       前端静态文件（Cloudflare Pages 构建输出目录）
-  index.html               主页面与 Bento 仪表盘骨架
-  styles.css               默认深色 + 浅色双主题样式与预留广告槽
-  app.js                   多源渲染、人机指纹对比、AI 诊断与工具逻辑
-  favicon.svg              浏览器地址栏标签图标
-  logo.svg                 IPSpot 品牌矢量 Logo
-  robots.txt               搜索引擎抓取规则
-  sitemap.xml              站点地图
-functions/                 Cloudflare Pages Functions（自动编译）
-  functions/v1/app.ts      → 路由 /functions/v1/app（透传 env）
-lib/
-  handler.ts               共享后端逻辑（多源聚合、防误判打分、AI 中转）
-deno/
-  index.ts                 Deno 部署入口
-dev/
-  serve.mjs                本地预览开发服务器
+.
+├── web/                        # 前端静态资源（Pages 构建输出目录）
+│   ├── index.html              # 默认简体中文入口（canonical: https://ipspot.org/）
+│   ├── en/index.html           # 英文入口（canonical: https://ipspot.org/en/）
+│   ├── styles.css              # 深浅主题变量、底纹纹理与动效样式
+│   ├── app.js                  # 四语言词典、报告渲染、地图与本地探测引擎
+│   └── sitemap.xml             # 多语言站点地图
+├── functions/functions/v1/
+│   └── app.ts                  # Cloudflare Pages Functions 路由 (/functions/v1/app)
+├── lib/
+│   └── handler.ts              # 共享无状态后端核心（聚合、评分、反查、AI 容灾）
+├── deno/
+│   └── index.ts                # Deno Deploy 入口
+└── dev/
+    └── serve.mjs               # 本地预览服务（零构建，Node.js 22+ 原生运行 TS）
 ```
 
 <a id="quick-start"></a>
 
-### 本地预览（无需推送仓库）
+### 本地运行
 
-需要 Node.js 22+（支持直接运行 `.ts` 文件，若版本较低可使用 `npx tsx dev/serve.mjs`）：
+需要 **Node.js 22+**（原生支持运行 `.ts`，低版本可用 `npx tsx dev/serve.mjs`）：
 
 ```bash
 node dev/serve.mjs
 ```
 
-启动后浏览器打开：**`http://127.0.0.1:4173/`**
+启动后访问：`http://127.0.0.1:4173/`（英文入口：`http://127.0.0.1:4173/en/`）。
 
-> 如需在本地预览时测试免费大模型 AI 诊断，可在项目根目录新建 `.env` 文件（请勿提交到 Git）：
+> **可选本地环境变量（`.env`，勿提交到 Git）**：
+> 未配置任何密钥时，基础查询与内置规则引擎 AI 诊断均可直接工作；若需启用特定上游与大模型，可按需添加：
 >
 > ```env
-> AI_API_KEY=你的免费API密钥
-> AI_API_URL=https://open.bigmodel.cn/api/paas/v4/chat/completions
-> AI_MODEL=glm-4-flash
+> CF_RADAR_TOKEN=          # Cloudflare Radar Token（可选，用于 ASN 实测人机比）
+> ABUSEIPDB_KEY=           # AbuseIPDB API Key（可选）
+> ZHIPU_API_KEY=           # 智谱 GLM-4-Flash（可选，另有 SILICONFLOW / GROQ / AI_API_KEY）
 > ```
->
-> 不配置任何 Key 时，AI 诊断会自动走内置的 **IPSpot 专家规则引擎**，保证 100% 正常响应不报错。
 
-### Cloudflare Pages 部署与免费 AI 一键绑定
+### 部署方式
 
-1. 将仓库推送至 GitHub，在 Cloudflare 控制台选择 **Workers & Pages -> 创建 -> Pages -> 连接到 Git**。
-2. 构建配置：
-   - **框架预设**：`None`
-   - **构建命令**：留空
-   - **构建输出目录**：`web`
-3. **开启免费 Cloudflare Workers AI（每日免费 10,000 Neurons，零 Key，全球含国内同源直连）**：
-   - 进入该 Pages 项目的 **设置 (Settings) -> 绑定 (Bindings) -> 添加 (Add)**。
-   - 选择 **Workers AI**，变量名称填写 **`AI`**，保存并重新部署即可生效。
-4. **可选备用免费大模型**：
-   - 在 **设置 -> 环境变量** 中添加 `AI_API_KEY`（如智谱 `glm-4-flash`、硅基流动或 Groq 免费 Key）、`AI_API_URL` 和 `AI_MODEL`，系统会在 Workers AI 额度耗尽时自动无缝切换。
+**Cloudflare Pages（推荐）**
+
+1. 绑定 GitHub 仓库后，构建预设选择 **`None`**，构建命令留空，输出目录填 **`web`**。
+2. 如需零密钥启用内置 AI：在项目 **Settings -> Bindings -> Add** 中添加 **Workers AI**，变量名设为 **`AI`** 后重新部署。
+3. 如需附加商业情报源或备用大模型，在 **Environment Variables** 中配置对应 Key 即可。
 
 <a id="api"></a>
 
 ### 开放 API
 
-```bash
-curl https://ipspot.org/functions/v1/app
-curl "https://ipspot.org/functions/v1/app?q=1.1.1.1"
-curl "https://ipspot.org/functions/v1/app?q=openai.com"
-curl "https://ipspot.org/functions/v1/app?asn=15169&pfx=8.8.8.0/24"
-```
-
-AI 诊断接口（POST）：
-
-```bash
-curl -X POST "https://ipspot.org/functions/v1/app?action=ai" \
-  -H "Content-Type: application/json" \
-  -d '{"ip":"1.1.1.1"}'
-```
+| 接口 | 方法 | 说明 | 示例 |
+| :--- | :---: | :--- | :--- |
+| 当前访问者报告 | `GET` | 识别请求头 IP 并返回完整报告 | `curl https://ipspot.org/functions/v1/app` |
+| 指定 IP / 域名 | `GET` | 查询 IPv4、IPv6 或域名解析目标 | `curl "https://ipspot.org/functions/v1/app?q=openai.com"` |
+| ASN / 前缀归属 | `GET` | 查询 ASN 名称及前缀所属国家 | `curl "https://ipspot.org/functions/v1/app?asn=15169&pfx=8.8.8.0/24"` |
+| 真实街道反查 | `GET` | 按经纬度反查街道（`jitter=1` 随机附近点） | `curl "https://ipspot.org/functions/v1/app?action=geoaddr&lat=39.0437&lon=-77.4875"` |
+| AI 风险诊断 | `POST` | 返回 4 点结构化风控与业务建议 | `curl -X POST "https://ipspot.org/functions/v1/app?action=ai" -H "Content-Type: application/json" -d '{"ip":"1.1.1.1","lang":"zh-CN"}'` |
 
 ---
 
@@ -121,82 +112,64 @@ curl -X POST "https://ipspot.org/functions/v1/app?action=ai" \
 
 ## English
 
-### Core Capabilities & Real Data Sources
+IPSpot is a lightweight, database-free IP intelligence and browser environment diagnostic platform. It serves Simplified Chinese at root (`/`) and English at `/en/`, with instant UI switching across `zh-CN`, `zh-TW`, `en`, and `ja`.
 
-- **Multi-source misjudgment-proof engine**: aggregates `ipapi.is`, `ipquery.io`, `ip-api.com`, `ipwho.is` and official `RDAP` in parallel, with cloud/IDC keywords and `rDNS` veto, to distinguish residential, dual-ISP business hosting and datacenter IPs. Domain names are resolved automatically.
-- **Transparent risk scoring**: 0–100% risk value and trust score, with every deduction explained (network baseline, cross-region broadcast, proxy/VPN/Tor, abuse and crawler signals).
-- **Ownership and history**: live RDAP net name, RIR organization, registration/update dates and `RIPEstat` BGP history.
-- **Human vs bot comparison**: locally collected WebDriver/Headless traits, Canvas/WebGL fingerprints, timezone and language, cross-checked against the exit IP.
-- **Free AI diagnosis worldwide**: same-origin backend relay (`POST /functions/v1/app?action=ai`), reachable from mainland China and overseas.
-- **Privacy and network tools**: randomized-subdomain DNS leak test, multi-STUN WebRTC leak test, IPv4/IPv6 dual-stack exit check, connectivity latency and RIPE RIS Live BGP monitor.
+### Capabilities
 
-### Project Structure
+| Module | Implementation |
+| :--- | :--- |
+| **Multi-Source Geo Consensus** | Aggregates up to 12 independent GeoIP feeds (**MaxMind**, **IP2Location.io**, **IPInfo.io**, **ipapi.is**, **ipwho.is**, **ipquery.io**, **ip-api.com**, **IP.SB**, **IP.Guide**, **GeoJS**, **FreeIPAPI**, **ipapi.co**) with consensus coordinate selection. |
+| **Origin & Network Classification** | Combines `RDAP`, `RIPEstat` RIR history, and ASN/rDNS patterns to separate native residential, dual-ISP, business, mobile, and datacenter IPs; domains are resolved via DNS-over-HTTPS automatically. |
+| **Cross-Verified Risk Signals** | Checks Proxy, VPN, Tor (`Tor Onionoo`), Datacenter, Mobile, and Abuse (`AbuseIPDB`, `StopForumSpam`, `Shodan InternetDB`, `proxycheck.io`) in parallel and lists the actual verified or matched sources. |
+| **Human/Bot Ratio & Purity Score** | Integrates 7-day `Cloudflare Radar` ASN traffic data (with model fallback when unconfigured) and calculates a transparent 0–100% risk score with itemized deductions without penalizing clean residential ISPs. |
+| **Interactive Map & Street Lookup** | Renders a zoomable `Leaflet` (`Esri World_Street_Map`) view with scroll-wheel zoom and reverse-geocodes nearby street, city, state, country, postal code, and timezone via `OpenStreetMap Nominatim`, `Photon`, and `BigDataCloud`. |
+| **Browser & Network Leak Suite** | Runs client-side `FingerprintJS v4`, Canvas/WebGL/Audio/Font hashing, WebDriver/Headless checks, 32-char randomized-subdomain DNS leak probes, multi-STUN WebRTC checks, dual-stack latency tests, and a `RIPE RIS Live` BGP monitor. |
+| **Resilient AI Diagnosis** | Same-origin `POST /functions/v1/app?action=ai` endpoint cascades across Zhipu GLM, SiliconFlow, Groq, and Cloudflare Workers AI, falling back cleanly to a deterministic rule engine when no API keys are present. |
+
+### Repository Layout
 
 ```text
-web/                       Static frontend (Cloudflare Pages build output)
-  index.html               Main page and Bento dashboard skeleton
-  styles.css               Dark + light themes and reserved ad slots
-  app.js                   Multi-source rendering, fingerprinting, AI, tools
-  favicon.svg              Browser tab icon
-  logo.svg                 IPSpot brand wordmark
-  robots.txt               Crawler rules
-  sitemap.xml              Sitemap
-functions/                 Cloudflare Pages Functions (auto-compiled)
-  functions/v1/app.ts      Route /functions/v1/app (passes env through)
-lib/
-  handler.ts               Shared backend logic (aggregation, scoring, AI relay)
-deno/
-  index.ts                 Deno deployment entry
-dev/
-  serve.mjs                Local preview server
+.
+├── web/                        # Static frontend assets (Cloudflare Pages output directory)
+│   ├── index.html              # Default zh-CN entry (canonical: https://ipspot.org/)
+│   ├── en/index.html           # English entry (canonical: https://ipspot.org/en/)
+│   ├── styles.css              # Dark/light themes, canvas textures, and motion system
+│   ├── app.js                  # 4-language i18n, UI renderer, map, and browser probes
+│   └── sitemap.xml             # Multilingual sitemap
+├── functions/functions/v1/
+│   └── app.ts                  # Cloudflare Pages Functions handler (/functions/v1/app)
+├── lib/
+│   └── handler.ts              # Shared stateless backend core
+├── deno/
+│   └── index.ts                # Deno Deploy entrypoint
+└── dev/
+    └── serve.mjs               # Zero-build local dev server (Node.js 22+)
 ```
 
-### Local Preview
+### Quick Start
 
-Requires Node.js 22+ (runs `.ts` directly; use `npx tsx dev/serve.mjs` on older versions):
+Requires **Node.js 22+** (runs `.ts` natively; use `npx tsx dev/serve.mjs` on older Node releases):
 
 ```bash
 node dev/serve.mjs
 ```
 
-Then open **http://127.0.0.1:4173/** in your browser.
+Open `http://127.0.0.1:4173/` (`http://127.0.0.1:4173/en/` for English).
 
-> To test the free LLM diagnosis locally, create a `.env` file in the project root (do not commit it):
->
-> ```env
-> AI_API_KEY=your_free_api_key
-> AI_API_URL=https://open.bigmodel.cn/api/paas/v4/chat/completions
-> AI_MODEL=glm-4-flash
-> ```
->
-> Without any key, AI diagnosis falls back to the built-in **IPSpot expert rule engine** and always responds normally.
+> **Optional `.env` variables (do not commit)**:
+> Core IP intelligence and the built-in rule engine work out of the box with zero keys. Optionally set `CF_RADAR_TOKEN`, `ABUSEIPDB_KEY`, `IPINFO_TOKEN`, `IP2LOCATION_KEY`, `PROXYCHECK_KEY`, or LLM keys (`ZHIPU_API_KEY`, `SILICONFLOW_API_KEY`, `GROQ_API_KEY`, `AI_API_KEY`).
 
-### Cloudflare Pages Deployment & Free AI Setup
+### Cloudflare Pages Deployment
 
-1. Push the repository to GitHub, then in Cloudflare choose **Workers & Pages -> Create -> Pages -> Connect to Git**.
-2. Build settings:
-   - **Framework preset**: `None`
-   - **Build command**: leave empty
-   - **Build output directory**: `web`
-3. **Enable free Cloudflare Workers AI (10,000 Neurons/day, no key, same-origin access worldwide)**:
-   - In the Pages project open **Settings -> Bindings -> Add**.
-   - Choose **Workers AI**, set the variable name to **`AI`**, save and redeploy.
-4. **Optional backup LLM**:
-   - Under **Settings -> Environment Variables** add `AI_API_KEY` (e.g. Zhipu `glm-4-flash`, SiliconFlow or Groq free key), `AI_API_URL` and `AI_MODEL`. The system switches automatically when the Workers AI quota is exhausted.
+1. Connect the GitHub repository with **Framework preset**: `None`, **Build command**: empty, and **Build output directory**: `web`.
+2. To enable free zero-key LLM diagnostics, go to **Settings -> Bindings -> Add -> Workers AI** and bind it as **`AI`**, then redeploy.
 
 ### Public API
 
-```bash
-curl https://ipspot.org/functions/v1/app
-curl "https://ipspot.org/functions/v1/app?q=1.1.1.1"
-curl "https://ipspot.org/functions/v1/app?q=openai.com"
-curl "https://ipspot.org/functions/v1/app?asn=15169&pfx=8.8.8.0/24"
-```
-
-AI diagnosis endpoint (POST):
-
-```bash
-curl -X POST "https://ipspot.org/functions/v1/app?action=ai" \
-  -H "Content-Type: application/json" \
-  -d '{"ip":"1.1.1.1"}'
-```
+| Endpoint | Method | Description | Example |
+| :--- | :---: | :--- | :--- |
+| Caller IP Report | `GET` | Full report for the requester's IP | `curl https://ipspot.org/functions/v1/app` |
+| IP / Domain Query | `GET` | Lookup IPv4, IPv6, or domain | `curl "https://ipspot.org/functions/v1/app?q=openai.com"` |
+| ASN Ownership | `GET` | ASN name and prefix country | `curl "https://ipspot.org/functions/v1/app?asn=15169&pfx=8.8.8.0/24"` |
+| Reverse Street Lookup | `GET` | Real address from coordinates | `curl "https://ipspot.org/functions/v1/app?action=geoaddr&lat=39.0437&lon=-77.4875"` |
+| AI Diagnosis | `POST` | 4-bullet risk and usage guidance | `curl -X POST "https://ipspot.org/functions/v1/app?action=ai" -H "Content-Type: application/json" -d '{"ip":"1.1.1.1","lang":"en"}'` |
