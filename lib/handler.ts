@@ -1,0 +1,1736 @@
+type Signal = {
+  key: string;
+  label: string;
+  detected: boolean;
+  desc: string;
+};
+
+type ScoreBreakdownItem = {
+  label: string;
+  delta: number;
+  reason: string;
+};
+
+type GeoCompareItem = {
+  source: string;
+  countryCode: string;
+  country: string;
+  region: string;
+  city: string;
+};
+
+type RegistryHistoryRow = {
+  cidr: string;
+  rir: string;
+  countryCode: string;
+  firstSeen: string;
+  lastSeen: string;
+};
+
+type BgpHistoryRow = {
+  cidr: string;
+  asn: string;
+  firstSeen: string;
+  lastSeen: string;
+};
+
+type RadarBotData = {
+  human: number;
+  bot: number;
+  source: "cloudflare-radar" | "estimated";
+};
+
+type RadarAsnEntity = {
+  countryCode: string;
+  orgName: string;
+  website: string;
+  rir: string;
+};
+
+type Report = {
+  ok: true;
+  ip: string;
+  ipNumeric: string;
+  queriedDomain?: string;
+  version: 4 | 6;
+  sources: string[];
+  location: {
+    country: string;
+    countryCode: string;
+    region: string;
+    city: string;
+    zip: string;
+    lat: number | null;
+    lon: number | null;
+    timezone: string;
+    localtime: string;
+    registeredCountryCode: string;
+    isNative: boolean | null;
+    geoTypeLabel: string;
+    multiSource: GeoCompareItem[];
+  };
+  network: {
+    asn: string;
+    asnType: string;
+    org: string;
+    isp: string;
+    route: string;
+    ipRange: string;
+    rdns: string;
+  };
+  company: {
+    name: string;
+    type: string;
+    typeLabel: string;
+    domain: string;
+    netName: string;
+    abuseEmail: string;
+    abuserScore: string;
+    rir: string;
+  };
+  type: {
+    code: "residential" | "dual_isp" | "datacenter" | "mobile" | "business" | "unknown";
+    label: string;
+    residential: boolean;
+    confidence: "high" | "medium" | "low";
+    reason: string;
+  };
+  scores: {
+    trust: number;
+    fraud: number;
+    riskLevel: string;
+    riskCode: string;
+    breakdown: ScoreBreakdownItem[];
+  };
+  humanRatio: RadarBotData;
+  exposure: {
+    ports: number[];
+    tags: string[];
+    vulnsCount: number;
+  };
+  abuse?: {
+    confidence: number;
+    reports: number;
+    lastReportedAt: string;
+  };
+  signals: Signal[];
+  registryHistory: RegistryHistoryRow[];
+  bgpHistory: BgpHistoryRow[];
+  connection?: {
+    httpProtocol: string;
+    tlsVersion: string;
+    tlsCipher: string;
+    colo: string;
+  };
+  assessedAt: string;
+};
+
+const CACHE_TTL = 15 * 60 * 1000;
+const CACHE_MAX = 800;
+const cache = new Map<string, { at: number; report: Report }>();
+
+const RADAR_TTL = 6 * 60 * 60 * 1000;
+const radarCache = new Map<number, { at: number; data: { human: number; bot: number } | null }>();
+const radarEntityCache = new Map<number, { at: number; data: RadarAsnEntity | null }>();
+
+const AI_CACHE_TTL = 12 * 60 * 60 * 1000;
+const aiCache = new Map<string, { at: number; data: Record<string, unknown> }>();
+
+const GEOADDR_TTL = 6 * 60 * 60 * 1000;
+const geoAddrCache = new Map<string, { at: number; data: Record<string, unknown> }>();
+
+const IPV4_RE =
+  /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+const IPV6_RE =
+  /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]+|::(ffff(:0{1,4})?:)?((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\.){3}(25[0-5]|(2[0-4]|1?[0-9])?[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\.){3}(25[0-5]|(2[0-4]|1?[0-9])?[0-9]))$/;
+const DOMAIN_RE = /^(?=.{3,253}$)(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$/;
+
+const COUNTRY_NAME_TO_CODE: Record<string, string> = {
+  "united states": "US", "usa": "US", "u.s.a.": "US", "united states of america": "US",
+  "china": "CN", "hong kong": "HK", "taiwan": "TW", "macao": "MO", "macau": "MO",
+  "japan": "JP", "south korea": "KR", "korea": "KR", "republic of korea": "KR",
+  "singapore": "SG", "united kingdom": "GB", "uk": "GB", "great britain": "GB",
+  "germany": "DE", "france": "FR", "netherlands": "NL", "canada": "CA",
+  "australia": "AU", "switzerland": "CH", "sweden": "SE", "norway": "NO",
+  "finland": "FI", "italy": "IT", "spain": "ES", "russia": "RU", "india": "IN",
+  "brazil": "BR", "ireland": "IE", "poland": "PL", "vietnam": "VN", "thailand": "TH",
+  "malaysia": "MY", "indonesia": "ID", "philippines": "PH", "turkey": "TR",
+  "united arab emirates": "AE", "south africa": "ZA", "mexico": "MX", "new zealand": "NZ",
+};
+
+const DATACENTER_WORDS = [
+  "amazon", "aws", "ec2", "googleusercontent", "google cloud", "google llc",
+  "microsoft", "azure", "oracle", "alibaba", "aliyun", "alicloud", "tencent",
+  "huawei cloud", "huaweicloud", "digitalocean", "vultr", "choopa", "constant company",
+  "linode", "akamai", "hetzner", "ovh", "cloudflare", "fastly", "leaseweb",
+  "m247", "colocrossing", "datacamp", "cdn77", "psychz", "zenlayer", "racknerd",
+  "buyvm", "frantech", "it7", "bandwagon", "dmit", "contabo", "ionos", "1&1",
+  "scaleway", "online s.a.s", "kamatera", "upcloud", "gcore", "g-core", "claw",
+  "hytron", "back waves", "hostinger", "godaddy", "namecheap", "bluehost",
+  "hostwinds", "interserver", "quadranet", "multacom", "sharktech", "nexeon",
+  "datacenter", "data center", "hosting", "cloud", "vps", "server", "colo",
+  "colocation", "dedicated", "dedi", "idc", "compute", "cdn", "proxy", "vpn",
+  "rackspace", "softlayer", "ibm cloud", "ucloud", "qcloud", "ksyun", "jdcloud",
+  "baiduyun", "volcengine", "bytedance", "xserver", "sakura internet", "conoha",
+  "gmo internet", "kagoya", "crunchbits", "spartan host", "hosthatch", "greencloud",
+  "melbicom", "aeza", "stark industries", "pq hosting", "hostkey", "terrahost",
+  "xneelo", "servers.com", "packet", "equinix", "cogent", "he.net", "hurricane electric",
+  "bgp.net", "virtual", "hypervisor", "kubernetes", "fly.io", "render", "vercel",
+  "netlify", "railway", "heroku", "deno", "supabase", "github", "gitlab",
+];
+
+const RDNS_DC_WORDS = [
+  "vps", "vm-", "srv", "server", "cloud", "host", "node", "dedi", "colo", "idc",
+  "amazonaws", "googleusercontent", "vultr", "digitalocean", "linode", "hetzner",
+  "ovh", "contabo", "scaleway", "leaseweb", "m247", "racknerd", "cloudflare", "compute",
+];
+
+const BUSINESS_WORDS = ["business", "enterprise", "corp", "corporate", "university", "college", "edu", "gov", "bank", "专线", "政企"];
+
+const RESIDENTIAL_WORDS = [
+  "telecom", "broadband", "cable", "fiber", "fibre", "dsl", "ftth",
+  "comcast", "xfinity", "charter", "spectrum", "cox communications",
+  "verizon fios", "at&t services", "bell canada", "rogers", "telus", "shaw",
+  "telefonica", "orange", "deutsche telekom", "british telecom", "bt group",
+  "virgin media", "sky broadband", "kpn", "ziggo", "proximus", "swisscom",
+  "free sas", "sfr", "bouygues", "singtel", "starhub", "m1 limited", "myrepublic",
+  "kddi", "softbank bb", "ntt communications", "ocn", "so-net", "big-lobe",
+  "sk broadband", "kt corporation", "lg uplus", "telstra", "optus", "tpg",
+  "pldt", "globe telecom", "cht", "hinet", "chunghwa", "pccw", "hkt", "hkbn",
+  "china telecom", "china unicom", "china mobile", "chinanet", "cnc group",
+  "电信", "联通", "移动", "铁通", "广电", "长城宽带", "有线宽带",
+];
+
+const RESIDENTIAL_ASNS = new Set([
+  4134, 4812, 4837, 9808, 9394, 4538, 17964, 17621, 17622, 17816,
+  17962, 18245, 24138, 24444, 24400, 24547, 38019, 56040, 56041,
+  56042, 56044, 56046, 56047, 56048, 58453, 9809, 9810, 9811,
+  7922, 20115, 7018, 701, 22773, 3320, 3215, 12322, 5410, 2856,
+  5089, 3301, 29518, 2119, 4766, 9318, 17858, 2516, 4713, 17676,
+  9500, 1221, 4804, 4775, 9299, 17552, 45758, 131090, 7545, 6327,
+  577, 852, 680, 6830, 1273, 5511, 1267, 3269, 12874, 8374, 3462,
+  4760, 9269, 3758, 4657,
+]);
+
+function getEnv(env: Record<string, unknown> | undefined, key: string): string {
+  if (env && typeof env[key] === "string" && (env[key] as string).trim()) {
+    return (env[key] as string).trim();
+  }
+  const g = globalThis as any;
+  if (g.process?.env && typeof g.process.env[key] === "string" && g.process.env[key].trim()) {
+    return g.process.env[key].trim();
+  }
+  if (g.Deno?.env?.get) {
+    try { return (g.Deno.env.get(key) || "").trim(); } catch { return ""; }
+  }
+  return "";
+}
+
+function getEnvAny(env: Record<string, unknown> | undefined, keys: string[]): string {
+  for (const k of keys) {
+    const v = getEnv(env, k);
+    if (v) return v;
+  }
+  return "";
+}
+
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+    },
+  });
+}
+
+function ipv4ToInt(ip: string): number {
+  const p = ip.split(".").map(Number);
+  return (((p[0] * 256 + p[1]) * 256 + p[2]) * 256 + p[3]) >>> 0;
+}
+
+function intToIpv4(n: number): string {
+  return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join(".");
+}
+
+function cidrToRange(cidr: string): string {
+  if (!cidr || !cidr.includes("/")) return "";
+  const [base, lenStr] = cidr.split("/");
+  const len = Number(lenStr);
+  if (!IPV4_RE.test(base) || !Number.isInteger(len) || len < 0 || len > 32) return "";
+  const mask = len === 0 ? 0 : (0xffffffff << (32 - len)) >>> 0;
+  const start = (ipv4ToInt(base) & mask) >>> 0;
+  const end = (start | (~mask >>> 0)) >>> 0;
+  return `${intToIpv4(start)} - ${intToIpv4(end)}`;
+}
+
+function normalizeCountryCode(raw: unknown): string {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  if (/^[A-Za-z]{2}$/.test(s)) {
+    const up = s.toUpperCase();
+    return up === "EU" || up === "ZZ" || up === "AP" ? "" : up;
+  }
+  const lower = s.toLowerCase();
+  if (COUNTRY_NAME_TO_CODE[lower]) return COUNTRY_NAME_TO_CODE[lower];
+  for (const [k, v] of Object.entries(COUNTRY_NAME_TO_CODE)) {
+    if (lower.includes(k)) return v;
+  }
+  return "";
+}
+
+function parseNum(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function isPrivateV4(ip: string): boolean {
+  const p = ip.split(".").map(Number);
+  if (p[0] === 0 || p[0] === 10 || p[0] === 127) return true;
+  if (p[0] === 169 && p[1] === 254) return true;
+  if (p[0] === 172 && p[1] >= 16 && p[1] <= 31) return true;
+  if (p[0] === 192 && p[1] === 168) return true;
+  if (p[0] === 100 && p[1] >= 64 && p[1] <= 127) return true;
+  if (p[0] >= 224) return true;
+  return false;
+}
+
+function isPrivateV6(ip: string): boolean {
+  const lower = ip.toLowerCase();
+  if (lower === "::" || lower === "::1") return true;
+  if (/^f[cd]/.test(lower)) return true;
+  if (/^fe[89ab]/.test(lower)) return true;
+  if (lower.startsWith("::ffff:")) {
+    const v4 = lower.slice(7);
+    if (IPV4_RE.test(v4)) return isPrivateV4(v4);
+  }
+  return false;
+}
+
+function publicIp(candidate: string | null): string | null {
+  if (!candidate) return null;
+  const ip = candidate.trim().replace(/^::ffff:/i, "");
+  if (IPV4_RE.test(ip)) return isPrivateV4(ip) ? null : ip;
+  if (IPV6_RE.test(ip)) return isPrivateV6(ip) ? null : ip;
+  return null;
+}
+
+function clientIpFromHeaders(req: Request): string | null {
+  const direct = ["cf-connecting-ip", "x-real-ip", "x-client-ip"];
+  for (const h of direct) {
+    const ip = publicIp(req.headers.get(h));
+    if (ip) return ip;
+  }
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) {
+    for (const part of forwarded.split(",")) {
+      const ip = publicIp(part);
+      if (ip) return ip;
+    }
+  }
+  return null;
+}
+
+function connectionMetaFromReq(req: Request): Report["connection"] {
+  const cf = (req as any).cf;
+  if (!cf || typeof cf !== "object") return undefined;
+  return {
+    httpProtocol: String(cf.httpProtocol || ""),
+    tlsVersion: String(cf.tlsVersion || ""),
+    tlsCipher: String(cf.tlsCipher || ""),
+    colo: String(cf.colo || ""),
+  };
+}
+
+async function fetchJson(url: string, timeoutMs: number, headers?: Record<string, string>): Promise<any> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { accept: "application/json", ...headers },
+    });
+    if (!res.ok) throw new Error(`upstream ${res.status}`);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function resolveDomain(domain: string): Promise<string | null> {
+  try {
+    const data = await fetchJson(
+      `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=A`,
+      4000,
+      { accept: "application/dns-json" },
+    );
+    for (const a of Array.isArray(data?.Answer) ? data.Answer : []) {
+      if (a.type === 1 && typeof a.data === "string") {
+        const ip = publicIp(a.data);
+        if (ip) return ip;
+      }
+    }
+    const data6 = await fetchJson(
+      `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=AAAA`,
+      4000,
+      { accept: "application/dns-json" },
+    );
+    for (const a of Array.isArray(data6?.Answer) ? data6.Answer : []) {
+      if (a.type === 28 && typeof a.data === "string") {
+        const ip = publicIp(a.data);
+        if (ip) return ip;
+      }
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+function containsAny(text: string, words: string[]): boolean {
+  const lower = text.toLowerCase();
+  return words.some((w) => lower.includes(w));
+}
+
+function asnNumber(asn: string | number | undefined): number {
+  if (typeof asn === "number") return asn;
+  const m = String(asn || "").match(/(\d+)/);
+  return m ? Number(m[1]) : 0;
+}
+
+function riskLabel(fraud: number): { riskLevel: string; riskCode: string } {
+  if (fraud <= 15) return { riskLevel: "极度纯净", riskCode: "minimal" };
+  if (fraud <= 30) return { riskLevel: "低风险", riskCode: "low" };
+  if (fraud <= 50) return { riskLevel: "中性", riskCode: "medium" };
+  if (fraud <= 70) return { riskLevel: "高风险", riskCode: "high" };
+  return { riskLevel: "极度风险", riskCode: "critical" };
+}
+
+function companyTypeLabel(t: string): string {
+  const map: Record<string, string> = {
+    isp: "运营商 (ISP)",
+    hosting: "数据中心 / 托管商",
+    business: "商业企业",
+    education: "教育科研",
+    government: "政府机构",
+    banking: "金融机构",
+  };
+  return map[(t || "").toLowerCase()] || (t ? t : "未标注");
+}
+
+function parseAbuserRatio(raw: unknown): number {
+  if (typeof raw === "number") return raw;
+  if (typeof raw === "string") {
+    const m = raw.match(/([\d.]+)/);
+    if (m) return parseFloat(m[1]);
+  }
+  return 0;
+}
+
+function fmtShortDate(raw: unknown): string {
+  const s = String(raw || "");
+  return s.length >= 10 ? s.slice(0, 10) : s || "—";
+}
+
+function cleanDomain(raw: unknown): string {
+  return String(raw || "")
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .split("/")[0]
+    .trim();
+}
+
+/* ================= Cloudflare Radar（真实人机比 + 官方 ASN 注册国兜底） ================= */
+async function fetchRadarBotClass(
+  asnNum: number,
+  env?: Record<string, unknown>,
+): Promise<{ human: number; bot: number } | null> {
+  if (!asnNum) return null;
+  const token = getEnvAny(env, ["key", "CF_RADAR_TOKEN"]);
+  if (!token) return null;
+
+  const hit = radarCache.get(asnNum);
+  if (hit && Date.now() - hit.at < RADAR_TTL) return hit.data;
+
+  try {
+    const raw = await fetchJson(
+      `https://api.cloudflare.com/client/v4/radar/http/summary/bot_class?asn=${asnNum}&dateRange=7d&format=json`,
+      5000,
+      { authorization: `Bearer ${token}` },
+    );
+    const summary = raw?.result?.summary_0;
+    if (raw?.success && summary && typeof summary === "object") {
+      let humanVal: number | null = null;
+      let botVal: number | null = null;
+      for (const [k, v] of Object.entries(summary)) {
+        const lk = k.toLowerCase();
+        const num = parseFloat(String(v));
+        if (!Number.isFinite(num)) continue;
+        if (lk === "human") humanVal = num;
+        else if (lk === "bot") botVal = num;
+      }
+      if (humanVal !== null || botVal !== null) {
+        const h = humanVal !== null ? humanVal : Math.max(0, 100 - (botVal || 0));
+        const human = Number(Math.max(0, Math.min(100, h)).toFixed(2));
+        const bot = Number(Math.max(0, Math.min(100, 100 - human)).toFixed(2));
+        const data = { human, bot };
+        if (radarCache.size >= 1500) {
+          const oldest = radarCache.keys().next().value;
+          if (oldest !== undefined) radarCache.delete(oldest);
+        }
+        radarCache.set(asnNum, { at: Date.now(), data });
+        return data;
+      }
+    }
+  } catch { /* fallback */ }
+
+  radarCache.set(asnNum, { at: Date.now(), data: null });
+  return null;
+}
+
+async function fetchRadarAsnEntity(
+  asnNum: number,
+  env?: Record<string, unknown>,
+): Promise<RadarAsnEntity | null> {
+  if (!asnNum) return null;
+  const token = getEnvAny(env, ["key", "CF_RADAR_TOKEN"]);
+  if (!token) return null;
+
+  const hit = radarEntityCache.get(asnNum);
+  if (hit && Date.now() - hit.at < RADAR_TTL) return hit.data;
+
+  try {
+    const raw = await fetchJson(
+      `https://api.cloudflare.com/client/v4/radar/entities/asns/${asnNum}?format=json`,
+      5000,
+      { authorization: `Bearer ${token}` },
+    );
+    const a = raw?.result?.asn;
+    if (raw?.success && a && typeof a === "object") {
+      const data: RadarAsnEntity = {
+        countryCode: normalizeCountryCode(a.country),
+        orgName: String(a.orgName || a.name || "").trim(),
+        website: cleanDomain(a.website),
+        rir: String(a.source || "").toUpperCase(),
+      };
+      if (radarEntityCache.size >= 1500) {
+        const oldest = radarEntityCache.keys().next().value;
+        if (oldest !== undefined) radarEntityCache.delete(oldest);
+      }
+      radarEntityCache.set(asnNum, { at: Date.now(), data });
+      return data;
+    }
+  } catch { /* optional */ }
+
+  radarEntityCache.set(asnNum, { at: Date.now(), data: null });
+  return null;
+}
+
+/* ================= Shodan InternetDB（免费免 Key 端口与资产标签） ================= */
+function extractShodanExposure(shodan: any): Report["exposure"] {
+  if (!shodan || typeof shodan !== "object" || shodan.detail) {
+    return { ports: [], tags: [], vulnsCount: 0 };
+  }
+  const ports: number[] = Array.isArray(shodan.ports)
+    ? shodan.ports.filter((p: unknown) => typeof p === "number").slice(0, 24)
+    : [];
+  const vulnsCount = Array.isArray(shodan.vulns) ? shodan.vulns.length : 0;
+
+  const tagSet = new Set<string>();
+  if (Array.isArray(shodan.tags)) {
+    for (const t of shodan.tags) {
+      if (typeof t === "string" && t.trim()) tagSet.add(t.trim().toLowerCase());
+    }
+  }
+  const portSet = new Set(ports);
+  if (portSet.has(22)) tagSet.add("ssh");
+  if (portSet.has(80) || portSet.has(443) || portSet.has(8080) || portSet.has(8443)) tagSet.add("webserver");
+  if (portSet.has(53)) tagSet.add("dns");
+  if (portSet.has(3389)) tagSet.add("rdp");
+  if (portSet.has(1080) || portSet.has(3128) || portSet.has(8118)) tagSet.add("proxy-port");
+  if (portSet.has(25) || portSet.has(465) || portSet.has(587)) tagSet.add("mail");
+  if (portSet.has(3306) || portSet.has(5432) || portSet.has(6379) || portSet.has(27017)) tagSet.add("database");
+  if (vulnsCount > 0) tagSet.add(`cve:${vulnsCount}`);
+
+  return {
+    ports,
+    tags: [...tagSet].slice(0, 7),
+    vulnsCount,
+  };
+}
+
+/* ================= RDAP 解析（精准兼容 ARIN / RIPE / APNIC） ================= */
+function extractRdapInfo(rdap: any) {
+  const out = {
+    countryCode: "",
+    netName: "",
+    cidr: "",
+    ipRange: "",
+    orgName: "",
+    abuseEmail: "",
+    rir: "",
+    regDate: "",
+    lastChanged: "",
+  };
+  if (!rdap || typeof rdap !== "object") return out;
+
+  out.countryCode = normalizeCountryCode(rdap.country);
+  if (typeof rdap.name === "string") out.netName = rdap.name;
+  if (Array.isArray(rdap.cidr0_cidrs) && rdap.cidr0_cidrs.length) {
+    const c = rdap.cidr0_cidrs[0];
+    const prefix = c.v4prefix || c.v6prefix;
+    if (prefix && c.length) out.cidr = `${prefix}/${c.length}`;
+  }
+  if (typeof rdap.startAddress === "string" && typeof rdap.endAddress === "string") {
+    out.ipRange = `${rdap.startAddress} - ${rdap.endAddress}`;
+  }
+
+  const rirHints = [
+    String(rdap.port43 || ""),
+    ...(Array.isArray(rdap.links) ? rdap.links.map((l: any) => String(l?.href || "")) : []),
+  ].join(" ").toLowerCase();
+  if (rirHints.includes("arin")) out.rir = "ARIN";
+  else if (rirHints.includes("ripe")) out.rir = "RIPE NCC";
+  else if (rirHints.includes("apnic")) out.rir = "APNIC";
+  else if (rirHints.includes("lacnic")) out.rir = "LACNIC";
+  else if (rirHints.includes("afrinic")) out.rir = "AFRINIC";
+
+  if (Array.isArray(rdap.events)) {
+    for (const ev of rdap.events) {
+      if (ev?.eventAction === "registration" && ev.eventDate) out.regDate = fmtShortDate(ev.eventDate);
+      if (ev?.eventAction === "last changed" && ev.eventDate) out.lastChanged = fmtShortDate(ev.eventDate);
+    }
+  }
+
+  const scanEntities = (entities: any[]) => {
+    if (!Array.isArray(entities)) return;
+    for (const ent of entities) {
+      const roles: string[] = Array.isArray(ent.roles) ? ent.roles : [];
+      const vcard = Array.isArray(ent.vcardArray?.[1]) ? ent.vcardArray[1] : [];
+      for (const item of vcard) {
+        if (!Array.isArray(item) || item.length < 4) continue;
+        if (item[0] === "fn" && typeof item[3] === "string" && !out.orgName) {
+          if (roles.includes("registrant") || roles.includes("administrative") || !roles.includes("abuse")) {
+            out.orgName = item[3];
+          }
+        }
+        if (item[0] === "email" && typeof item[3] === "string") {
+          if (roles.includes("abuse") || !out.abuseEmail) out.abuseEmail = item[3];
+        }
+        if (item[0] === "adr" && !out.countryCode) {
+          const ccParam = normalizeCountryCode(item[1]?.cc);
+          if (ccParam) { out.countryCode = ccParam; continue; }
+          if (Array.isArray(item[3]) && item[3][6]) {
+            const ccArr = normalizeCountryCode(item[3][6]);
+            if (ccArr) { out.countryCode = ccArr; continue; }
+          }
+          if (typeof item[1]?.label === "string") {
+            const lines = item[1].label.split(/\r?\n/).map((s: string) => s.trim()).filter(Boolean);
+            const lastLine = lines[lines.length - 1] || "";
+            const ccLine = normalizeCountryCode(lastLine);
+            if (ccLine) out.countryCode = ccLine;
+          }
+        }
+      }
+      if (Array.isArray(ent.entities)) scanEntities(ent.entities);
+    }
+  };
+  scanEntities(rdap.entities);
+  return out;
+}
+
+function extractRirHistory(
+  ripeRir: any,
+  fallbackCC: string,
+  rdapInfo: ReturnType<typeof extractRdapInfo>,
+  routeFallback: string,
+): RegistryHistoryRow[] {
+  const list = Array.isArray(ripeRir?.data?.rirs) ? ripeRir.data.rirs : [];
+  const rows: RegistryHistoryRow[] = [];
+  for (const r of list) {
+    if (!r) continue;
+    rows.push({
+      cidr: String(r.resource || "—"),
+      rir: String(r.rir || "—"),
+      countryCode: normalizeCountryCode(r.country),
+      firstSeen: fmtShortDate(r.first_time),
+      lastSeen: fmtShortDate(r.last_time),
+    });
+  }
+  rows.sort((a, b) => (b.lastSeen || "").localeCompare(a.lastSeen || ""));
+  if (rows.length && !rows[0].countryCode && fallbackCC) {
+    rows[0].countryCode = fallbackCC;
+  }
+  if (!rows.length && (rdapInfo.cidr || routeFallback) && (rdapInfo.rir || fallbackCC)) {
+    rows.push({
+      cidr: rdapInfo.cidr || routeFallback,
+      rir: rdapInfo.rir || "RIR",
+      countryCode: fallbackCC,
+      firstSeen: rdapInfo.regDate || "—",
+      lastSeen: rdapInfo.lastChanged || fmtShortDate(new Date().toISOString()),
+    });
+  }
+  return rows.slice(0, 8);
+}
+
+function extractBgpHistory(ripeHist: any): BgpHistoryRow[] {
+  const byOrigin = Array.isArray(ripeHist?.data?.by_origin) ? ripeHist.data.by_origin : [];
+  const rows: BgpHistoryRow[] = [];
+  for (const item of byOrigin.slice(0, 8)) {
+    const asn = item.origin ? `AS${item.origin}` : "—";
+    for (const p of (Array.isArray(item.prefixes) ? item.prefixes : []).slice(0, 2)) {
+      const tls = Array.isArray(p.timelines) ? p.timelines : [];
+      if (!tls.length) continue;
+      rows.push({
+        cidr: String(p.prefix || "—"),
+        asn,
+        firstSeen: fmtShortDate(tls[0].starttime),
+        lastSeen: fmtShortDate(tls[tls.length - 1].endtime),
+      });
+    }
+  }
+  rows.sort((a, b) => (b.lastSeen || "").localeCompare(a.lastSeen || ""));
+  return rows.slice(0, 10);
+}
+
+function consensusCode(codes: string[]): string {
+  const tally = new Map<string, number>();
+  for (const c of codes) if (c) tally.set(c, (tally.get(c) || 0) + 1);
+  let best = "";
+  let bestN = 0;
+  for (const c of codes) {
+    if (!c) continue;
+    const n = tally.get(c)!;
+    if (n > bestN) { best = c; bestN = n; }
+  }
+  return best;
+}
+
+function buildReport(
+  ip: string,
+  d: {
+    ipapi: any;
+    ipquery: any;
+    ipapiCom: any;
+    ipwho: any;
+    geojs: any;
+    freeip: any;
+    rdap: any;
+    rirCountry: any;
+    ripeRir: any;
+    ripeGeo: any;
+    ripeHist: any;
+    shodan: any;
+    radar: { human: number; bot: number } | null;
+    radarEntity: RadarAsnEntity | null;
+    abuseDb: any;
+  },
+  queriedDomain?: string,
+): Report {
+  const { ipapi, ipquery, ipapiCom, ipwho, geojs, freeip, rdap, rirCountry, ripeRir, ripeGeo, ripeHist, shodan, radar, radarEntity, abuseDb } = d;
+  const version: 4 | 6 = IPV4_RE.test(ip) ? 4 : 6;
+  const ipNumeric = version === 4 ? String(ipv4ToInt(ip)) : "—";
+
+  const ipapiOk = !!(ipapi && ipapi.ip && !ipapi.error);
+  const ipqueryOk = !!(ipquery && ipquery.ip && ipquery.location);
+  const ipapiComOk = !!(ipapiCom && ipapiCom.status === "success");
+  const ipwhoOk = !!(ipwho && ipwho.success === true);
+  const geojsOk = !!(geojs && geojs.country_code);
+  const freeipOk = !!(freeip && freeip.countryCode);
+  const maxmindLoc = ripeGeo?.data?.located_resources?.[0]?.locations?.[0] || null;
+  const exposure = extractShodanExposure(shodan);
+  const abuseData = abuseDb?.data && typeof abuseDb.data === "object" ? abuseDb.data : null;
+
+  const activeSources: string[] = [];
+  if (maxmindLoc) activeSources.push("MaxMind");
+  if (ipapiOk) activeSources.push("ipapi.is");
+  if (ipwhoOk) activeSources.push("ipwho.is");
+  if (ipapiComOk) activeSources.push("ip-api.com");
+  if (ipqueryOk) activeSources.push("ipquery.io");
+  if (geojsOk) activeSources.push("GeoJS");
+  if (freeipOk) activeSources.push("FreeIPAPI");
+  if (radar) activeSources.push("Cloudflare Radar");
+  if (exposure.ports.length || exposure.tags.length) activeSources.push("Shodan");
+  if (abuseData) activeSources.push("AbuseIPDB");
+
+  const rdapInfo = extractRdapInfo(rdap);
+  const rirStatsEntry = rirCountry?.data?.located_resources?.[0] || null;
+  const rirStatsCC = normalizeCountryCode(rirStatsEntry?.location);
+  const rirStatsCidr = typeof rirStatsEntry?.resource === "string" ? rirStatsEntry.resource : "";
+  const ripeRirCC = normalizeCountryCode(ripeRir?.data?.rirs?.[0]?.country);
+
+  const registeredCC =
+    rirStatsCC ||
+    rdapInfo.countryCode ||
+    ripeRirCC ||
+    radarEntity?.countryCode ||
+    normalizeCountryCode(ipapi?.asn?.country) ||
+    "";
+
+  // 1. 多源地理对照
+  const multiSource: GeoCompareItem[] = [];
+  if (maxmindLoc && maxmindLoc.country) {
+    const [cc, region] = String(maxmindLoc.country).split("-");
+    multiSource.push({
+      source: "MaxMind",
+      countryCode: (cc || "").toUpperCase(),
+      country: "",
+      region: region || "",
+      city: String(maxmindLoc.city || ""),
+    });
+  }
+  if (ipapiOk && ipapi.location) {
+    multiSource.push({
+      source: "ipapi.is",
+      countryCode: String(ipapi.location.country_code || "").toUpperCase(),
+      country: ipapi.location.country || "",
+      region: ipapi.location.state || "",
+      city: ipapi.location.city || "",
+    });
+  }
+  if (ipwhoOk) {
+    multiSource.push({
+      source: "ipwho.is",
+      countryCode: String(ipwho.country_code || "").toUpperCase(),
+      country: ipwho.country || "",
+      region: ipwho.region || "",
+      city: ipwho.city || "",
+    });
+  }
+  if (ipqueryOk && ipquery.location) {
+    multiSource.push({
+      source: "ipquery.io",
+      countryCode: String(ipquery.location.country_code || "").toUpperCase(),
+      country: ipquery.location.country || "",
+      region: ipquery.location.state || "",
+      city: ipquery.location.city || "",
+    });
+  }
+  if (ipapiComOk) {
+    multiSource.push({
+      source: "ip-api.com",
+      countryCode: String(ipapiCom.countryCode || "").toUpperCase(),
+      country: ipapiCom.country || "",
+      region: ipapiCom.regionName || "",
+      city: ipapiCom.city || "",
+    });
+  }
+  if (geojsOk) {
+    multiSource.push({
+      source: "GeoJS",
+      countryCode: String(geojs.country_code || "").toUpperCase(),
+      country: geojs.country || "",
+      region: geojs.region || "",
+      city: geojs.city || "",
+    });
+  }
+  if (freeipOk) {
+    multiSource.push({
+      source: "FreeIPAPI",
+      countryCode: String(freeip.countryCode || "").toUpperCase(),
+      country: freeip.countryName || "",
+      region: freeip.regionName || "",
+      city: freeip.cityName || "",
+    });
+  }
+
+  const consensusCC = consensusCode(multiSource.map((m) => m.countryCode));
+  const pickLoc = () => {
+    const candidates = [
+      ipapiOk && ipapi.location ? {
+        cc: String(ipapi.location.country_code || "").toUpperCase(),
+        country: ipapi.location.country || "",
+        region: ipapi.location.state || "",
+        city: ipapi.location.city || "",
+        zip: ipapi.location.zip ? String(ipapi.location.zip) : "",
+        lat: parseNum(ipapi.location.latitude),
+        lon: parseNum(ipapi.location.longitude),
+        timezone: ipapi.location.timezone || "",
+        localtime: ipapi.location.local_time || "",
+      } : null,
+      ipqueryOk && ipquery.location ? {
+        cc: String(ipquery.location.country_code || "").toUpperCase(),
+        country: ipquery.location.country || "",
+        region: ipquery.location.state || "",
+        city: ipquery.location.city || "",
+        zip: ipquery.location.zipcode ? String(ipquery.location.zipcode) : "",
+        lat: parseNum(ipquery.location.latitude),
+        lon: parseNum(ipquery.location.longitude),
+        timezone: ipquery.location.timezone || "",
+        localtime: ipquery.location.localtime || "",
+      } : null,
+      ipapiComOk ? {
+        cc: String(ipapiCom.countryCode || "").toUpperCase(),
+        country: ipapiCom.country || "",
+        region: ipapiCom.regionName || "",
+        city: ipapiCom.city || "",
+        zip: ipapiCom.zip ? String(ipapiCom.zip) : "",
+        lat: parseNum(ipapiCom.lat),
+        lon: parseNum(ipapiCom.lon),
+        timezone: ipapiCom.timezone || "",
+        localtime: "",
+      } : null,
+      ipwhoOk ? {
+        cc: String(ipwho.country_code || "").toUpperCase(),
+        country: ipwho.country || "",
+        region: ipwho.region || "",
+        city: ipwho.city || "",
+        zip: ipwho.postal ? String(ipwho.postal) : "",
+        lat: parseNum(ipwho.latitude),
+        lon: parseNum(ipwho.longitude),
+        timezone: ipwho.timezone?.id || "",
+        localtime: ipwho.timezone?.current_time || "",
+      } : null,
+      geojsOk ? {
+        cc: String(geojs.country_code || "").toUpperCase(),
+        country: geojs.country || "",
+        region: geojs.region || "",
+        city: geojs.city || "",
+        zip: "",
+        lat: parseNum(geojs.latitude),
+        lon: parseNum(geojs.longitude),
+        timezone: geojs.timezone || "",
+        localtime: "",
+      } : null,
+      freeipOk ? {
+        cc: String(freeip.countryCode || "").toUpperCase(),
+        country: freeip.countryName || "",
+        region: freeip.regionName || "",
+        city: freeip.cityName || "",
+        zip: freeip.zipCode ? String(freeip.zipCode) : "",
+        lat: parseNum(freeip.latitude),
+        lon: parseNum(freeip.longitude),
+        timezone: Array.isArray(freeip.timeZones) ? (freeip.timeZones[0] || "") : "",
+        localtime: "",
+      } : null,
+    ].filter(Boolean) as any[];
+
+    const primary = candidates.find((c) => c.cc === consensusCC) || candidates[0] || {
+      cc: "", country: "", region: "", city: "", zip: "", lat: null, lon: null, timezone: "", localtime: "",
+    };
+    if (!primary.zip) {
+      const z = candidates.find((c) => c.cc === primary.cc && c.zip);
+      if (z) primary.zip = z.zip;
+    }
+    if (!primary.timezone) {
+      const tz = candidates.find((c) => c.timezone);
+      if (tz) primary.timezone = tz.timezone;
+    }
+    return primary;
+  };
+  const loc = pickLoc();
+
+  // 2. 原生 IP / 广播 IP + CIDR / IP 范围 + 注册地历史
+  let isNative: boolean | null = null;
+  let geoTypeLabel = "未知来源";
+  if (registeredCC && loc.cc) {
+    isNative = registeredCC === loc.cc;
+    geoTypeLabel = isNative ? `原生 IP (${registeredCC})` : `广播 IP (${registeredCC}→${loc.cc})`;
+  }
+
+  const asnNum =
+    asnNumber(ipapi?.asn?.asn) ||
+    asnNumber(ipquery?.isp?.asn) ||
+    asnNumber(ipapiCom?.as) ||
+    asnNumber(ipwho?.connection?.asn) ||
+    asnNumber(geojs?.asn);
+  const asnStr = asnNum ? `AS${asnNum}` : "";
+  const orgStr =
+    ipapi?.asn?.org ||
+    ipapi?.company?.name ||
+    radarEntity?.orgName ||
+    ipquery?.isp?.org ||
+    ipapiCom?.org ||
+    ipwho?.connection?.org ||
+    rdapInfo.orgName ||
+    geojs?.organization_name ||
+    "";
+  const ispStr =
+    ipapi?.company?.name ||
+    ipquery?.isp?.isp ||
+    ipapiCom?.isp ||
+    ipwho?.connection?.isp ||
+    abuseData?.isp ||
+    orgStr;
+  const rdns = (ipapiComOk && typeof ipapiCom.reverse === "string" ? ipapiCom.reverse : "") || "";
+
+  const route =
+    ipapi?.asn?.route ||
+    ipapi?.company?.network ||
+    rdapInfo.cidr ||
+    rirStatsCidr ||
+    (ripeRir?.data?.rirs?.[0]?.resource ? String(ripeRir.data.rirs[0].resource) : "") ||
+    "";
+  const ipRange = (version === 4 ? cidrToRange(route) : "") || rdapInfo.ipRange || "";
+  const registryHistory = extractRirHistory(ripeRir, registeredCC, rdapInfo, route);
+  const bgpHistory = extractBgpHistory(ripeHist);
+
+  const asnType = String(ipapi?.asn?.type || "").toLowerCase();
+  const compType = String(ipapi?.company?.type || "").toLowerCase();
+
+  const company: Report["company"] = {
+    name: ipapi?.company?.name || radarEntity?.orgName || rdapInfo.orgName || orgStr || "—",
+    type: compType || asnType || "",
+    typeLabel: companyTypeLabel(compType || asnType),
+    domain: ipapi?.company?.domain || ipapi?.asn?.domain || ipwho?.connection?.domain || abuseData?.domain || radarEntity?.website || "",
+    netName: rdapInfo.netName || "",
+    abuseEmail: ipapi?.abuse?.email || rdapInfo.abuseEmail || "",
+    abuserScore: String(ipapi?.company?.abuser_score || ipapi?.asn?.abuser_score || ""),
+    rir: registryHistory[0]?.rir || rdapInfo.rir || radarEntity?.rir || "",
+  };
+
+  // 3. 风险信号与防误判判定（融合 Shodan + AbuseIPDB）
+  const shodanTagsLower = exposure.tags.map((t) => t.toLowerCase());
+  const shodanHasCloud = shodanTagsLower.includes("cloud");
+  const shodanHasProxy = shodanTagsLower.some((t) => t === "proxy" || t === "open-proxy" || t === "proxy-port");
+  const shodanHasVpn = shodanTagsLower.includes("vpn");
+  const shodanHasTor = shodanTagsLower.includes("tor");
+  const shodanCompromised = shodanTagsLower.some((t) => t === "compromised" || t === "malware" || t === "botnet");
+
+  const abuseUsage = String(abuseData?.usageType || "").toLowerCase();
+  const abuseDc = abuseUsage.includes("data center") || abuseUsage.includes("web hosting") || abuseUsage.includes("transit");
+
+  const dcByApi =
+    ipapi?.is_datacenter === true ||
+    compType === "hosting" ||
+    asnType === "hosting" ||
+    ipquery?.risk?.is_datacenter === true ||
+    (ipapiComOk && ipapiCom.hosting === true) ||
+    shodanHasCloud ||
+    abuseDc;
+
+  const combinedText = `${orgStr} ${ispStr} ${company.name} ${company.domain} ${company.netName} ${ipapiCom?.asname || ""}`;
+  const dcByKeyword = containsAny(combinedText, DATACENTER_WORDS) || (rdns ? containsAny(rdns, RDNS_DC_WORDS) : false);
+
+  const isProxy =
+    ipapi?.is_proxy === true ||
+    ipquery?.risk?.is_proxy === true ||
+    (ipapiComOk && ipapiCom.proxy === true) ||
+    shodanHasProxy;
+  const isVpn = ipapi?.is_vpn === true || ipquery?.risk?.is_vpn === true || shodanHasVpn;
+  const isTor = ipapi?.is_tor === true || ipquery?.risk?.is_tor === true || shodanHasTor || abuseData?.isTor === true;
+  const isMobile =
+    ipapi?.is_mobile === true ||
+    ipquery?.risk?.is_mobile === true ||
+    (ipapiComOk && ipapiCom.mobile === true) ||
+    abuseUsage.includes("mobile");
+  const isCrawler = ipapi?.is_crawler === true || abuseUsage.includes("search engine spider");
+
+  const ipqThreat = Number(ipquery?.risk?.assessment?.threat_score) || 0;
+  const ipqRisk = Number(ipquery?.risk?.risk_score) || 0;
+  const abuseDbConf = Number(abuseData?.abuseConfidenceScore) || 0;
+  const abuseDbReports = Number(abuseData?.totalReports) || 0;
+  const abuserRatio = Math.max(
+    parseAbuserRatio(ipapi?.company?.abuser_score),
+    parseAbuserRatio(ipapi?.asn?.abuser_score),
+  );
+  const isAbuser =
+    ipapi?.is_abuser === true ||
+    ipqThreat > 0 ||
+    ipqRisk >= 50 ||
+    abuserRatio >= 0.05 ||
+    abuseDbConf >= 20 ||
+    shodanCompromised;
+
+  const isKnownResAsn = RESIDENTIAL_ASNS.has(asnNum);
+  const hasResWords = containsAny(combinedText, RESIDENTIAL_WORDS);
+  const hasBizWords =
+    containsAny(combinedText, BUSINESS_WORDS) ||
+    compType === "business" ||
+    compType === "education" ||
+    compType === "government";
+
+  const isDc = dcByApi || dcByKeyword;
+  let type: Report["type"];
+  if (isMobile && !isDc) {
+    type = { code: "mobile", label: "移动网络", residential: false, confidence: "high", reason: "蜂窝移动运营商出口" };
+  } else if (isDc && (asnType === "isp" || isKnownResAsn) && !dcByKeyword) {
+    type = { code: "dual_isp", label: "双 ISP 托管", residential: false, confidence: "high", reason: "ISP 段但命中机房/托管特征" };
+  } else if (isDc) {
+    type = { code: "datacenter", label: "机房 IP", residential: false, confidence: dcByApi ? "high" : "medium", reason: dcByApi ? "命中数据中心/云主机库" : "组织或 rDNS 命中机房特征" };
+  } else if (hasBizWords) {
+    type = { code: "business", label: "商业宽带", residential: false, confidence: "medium", reason: "企业/高校/政企专线" };
+  } else if ((compType === "isp" || asnType === "isp" || isKnownResAsn || hasResWords) && !isProxy && !isVpn && !isTor) {
+    if (isNative === false) {
+      type = { code: "dual_isp", label: "广播 ISP", residential: false, confidence: "medium", reason: "ISP 段但跨国广播" };
+    } else {
+      type = { code: "residential", label: "家宽 IP", residential: true, confidence: (compType === "isp" && asnType === "isp") || isKnownResAsn ? "high" : "medium", reason: "原生住宅运营商宽带" };
+    }
+  } else if (compType === "isp" || isKnownResAsn || hasResWords) {
+    type = { code: "dual_isp", label: "住宅代理", residential: false, confidence: "medium", reason: "ISP 段但命中代理/VPN" };
+  } else {
+    type = { code: "unknown", label: "商业/未分类", residential: false, confidence: "low", reason: "缺乏家宽证据，审慎归类" };
+  }
+
+  // 4. 人机流量比
+  let humanRatio: RadarBotData;
+  if (radar) {
+    humanRatio = { human: radar.human, bot: radar.bot, source: "cloudflare-radar" };
+  } else {
+    let humanEst =
+      type.code === "residential" ? (type.confidence === "high" ? 95 : 90) :
+      type.code === "mobile" ? 88 :
+      type.code === "business" ? 76 :
+      type.code === "dual_isp" ? 58 :
+      type.code === "datacenter" ? 32 : 68;
+    if (isNative === false) humanEst -= 10;
+    if (isProxy) humanEst -= 20;
+    if (isVpn) humanEst -= 15;
+    if (isTor) humanEst -= 28;
+    if (isAbuser) humanEst -= 20;
+    const h = Math.max(3, Math.min(98, Math.round(humanEst)));
+    humanRatio = { human: h, bot: 100 - h, source: "estimated" };
+  }
+
+  // 5. 动态校准风控评分（融合 AbuseIPDB 真实 90 天举报分 + Radar Bot 密度 + Shodan）
+  const breakdown: ScoreBreakdownItem[] = [];
+  const addScore = (label: string, delta: number, reason: string) => {
+    if (delta !== 0) breakdown.push({ label, delta, reason });
+  };
+
+  if (type.code === "residential") addScore("网络基线", type.confidence === "high" ? 5 : 10, "原生住宅宽带基线");
+  else if (type.code === "mobile") addScore("网络基线", 12, "移动蜂窝 CGNAT 共享出口");
+  else if (type.code === "business") addScore("网络基线", 18, "企业/机构商用网络");
+  else if (type.code === "dual_isp") addScore("网络基线", 26, "双 ISP / 广播托管段");
+  else if (type.code === "datacenter") addScore("网络基线", 28, "数据中心 / 云主机网络");
+  else addScore("网络基线", 22, "归属证据不足审慎基线");
+
+  if (radar) {
+    if (radar.bot >= 90) addScore("ASN 机器流量", 9, `Radar 实测该 ASN 机器流量占比 ${radar.bot}%`);
+    else if (radar.bot >= 75) addScore("ASN 机器流量", 6, `Radar 实测该 ASN 机器流量占比 ${radar.bot}%`);
+    else if (radar.bot >= 55) addScore("ASN 机器流量", 3, `Radar 实测该 ASN 机器流量占比 ${radar.bot}%`);
+  }
+
+  if (isNative === false) addScore("跨区广播", 12, `注册国 ${registeredCC} ≠ 定位国 ${loc.cc}`);
+  if (isTor) addScore("Tor 节点", 45, "命中 Tor 匿名出口");
+  if (isVpn) addScore("VPN 出口", 20, "命中 VPN 节点库");
+  if (isProxy) addScore("代理节点", 22, "命中公开代理或转发节点");
+  if (isDc && (isProxy || isVpn)) addScore("机房代理叠加", 8, "机房 + 代理复合高危特征");
+
+  if (abuseData && abuseDbConf > 0) {
+    const scaled = Math.min(35, Math.max(4, Math.round(abuseDbConf * 0.35)));
+    addScore("AbuseIPDB 举报", scaled, `近 90 天被举报 ${abuseDbReports} 次（置信度 ${abuseDbConf}%）`);
+  } else if (isAbuser) {
+    const abuseDelta = abuserRatio >= 0.1 || ipqThreat >= 60 || shodanCompromised ? 24 : 16;
+    addScore("滥用与威胁", abuseDelta, "命中滥用或威胁情报源");
+  }
+
+  if (isCrawler) addScore("爬虫来源", 10, "命中商业/抓取爬虫库");
+  if (exposure.vulnsCount >= 3) addScore("暴露面漏洞", 6, `Shodan 发现 ${exposure.vulnsCount} 个已知漏洞特征`);
+
+  const fraud = Math.max(0, Math.min(100, Math.round(breakdown.reduce((s, x) => s + x.delta, 0))));
+  const trust = 100 - fraud;
+
+  // 6. 严格 6 项核心风险信号
+  const signals: Signal[] = [
+    { key: "proxy", label: "代理服务器", detected: isProxy, desc: "流量是否经过公开代理或匿名代理转发" },
+    { key: "vpn", label: "VPN 出口", detected: isVpn, desc: "是否为已知 VPN 服务的出口节点" },
+    { key: "tor", label: "Tor 网络", detected: isTor, desc: "是否为 Tor 匿名网络的出口节点" },
+    { key: "datacenter", label: "数据中心", detected: isDc, desc: "是否托管于云服务商或机房，而非家庭网络" },
+    { key: "mobile", label: "移动网络", detected: isMobile, desc: "是否通过蜂窝移动网络接入互联网" },
+    { key: "abuse", label: "滥用威胁", detected: isAbuser || isCrawler, desc: abuseData ? `AbuseIPDB 近 90 天举报 ${abuseDbReports} 次（置信度 ${abuseDbConf}%）` : "是否出现在滥用、黑名单或自动化爬虫情报源中" },
+  ];
+
+  return {
+    ok: true,
+    ip,
+    ipNumeric,
+    ...(queriedDomain ? { queriedDomain } : {}),
+    version,
+    sources: activeSources,
+    location: {
+      country: loc.country,
+      countryCode: loc.cc,
+      region: loc.region,
+      city: loc.city,
+      zip: loc.zip,
+      lat: loc.lat,
+      lon: loc.lon,
+      timezone: loc.timezone,
+      localtime: loc.localtime,
+      registeredCountryCode: registeredCC,
+      isNative,
+      geoTypeLabel,
+      multiSource,
+    },
+    network: {
+      asn: asnStr,
+      asnType: asnType ? companyTypeLabel(asnType) : "—",
+      org: orgStr,
+      isp: ispStr,
+      route,
+      ipRange,
+      rdns,
+    },
+    company,
+    type,
+    scores: {
+      trust,
+      fraud,
+      ...riskLabel(fraud),
+      breakdown,
+    },
+    humanRatio,
+    exposure,
+    ...(abuseData ? {
+      abuse: {
+        confidence: abuseDbConf,
+        reports: abuseDbReports,
+        lastReportedAt: fmtShortDate(abuseData.lastReportedAt),
+      },
+    } : {}),
+    signals,
+    registryHistory,
+    bgpHistory,
+    assessedAt: new Date().toISOString(),
+  };
+}
+
+async function fetchFresh(
+  ip: string,
+  queriedDomain?: string,
+  env?: Record<string, unknown>,
+): Promise<Report> {
+  const encoded = encodeURIComponent(ip);
+  const abuseKey = getEnvAny(env, ["ABUSEIPDB_KEY", "ABUSEIPDB_API_KEY", "ABUSE_KEY"]);
+
+  const [ipapi, ipquery, ipapiCom, ipwho, geojs, freeip, rdap, ripeRir, ripeGeo, shodan, abuseDb] =
+    await Promise.all([
+      fetchJson(`https://api.ipapi.is/?q=${encoded}`, 4800).catch(() => null),
+      fetchJson(`https://api.ipquery.io/${encoded}`, 5000).catch(() => null),
+      fetchJson(
+        `http://ip-api.com/json/${encoded}?fields=status,country,countryCode,regionName,city,lat,lon,timezone,zip,isp,org,as,asname,reverse,mobile,proxy,hosting`,
+        4200,
+      ).catch(() => null),
+      fetchJson(`https://ipwho.is/${encoded}`, 4500).catch(() => null),
+      fetchJson(`https://get.geojs.io/v1/ip/geo/${encoded}.json`, 4500).catch(() => null),
+      fetchJson(`https://freeipapi.com/api/json/${encoded}`, 4500).catch(() => null),
+      fetchJson(`https://rdap.org/ip/${encoded}`, 6000).catch(() => null),
+      fetchJson(`https://stat.ripe.net/data/rir/data.json?resource=${encoded}`, 6500).catch(() => null),
+      fetchJson(`https://stat.ripe.net/data/maxmind-geo-lite/data.json?resource=${encoded}`, 6500).catch(() => null),
+      IPV4_RE.test(ip) ? fetchJson(`https://internetdb.shodan.io/${encoded}`, 3800).catch(() => null) : Promise.resolve(null),
+      abuseKey
+        ? fetchJson(`https://api.abuseipdb.com/api/v2/check?ipAddress=${encoded}&maxAgeInDays=90`, 4200, { key: abuseKey }).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+
+  const anyPrimaryOk =
+    (ipapi && ipapi.ip && !ipapi.error) ||
+    (ipquery && ipquery.ip && ipquery.location) ||
+    (ipapiCom && ipapiCom.status === "success") ||
+    (ipwho && ipwho.success === true) ||
+    (geojs && geojs.country_code) ||
+    (freeip && freeip.countryCode);
+
+  if (!anyPrimaryOk) throw new Error("upstream_unavailable");
+
+  const resolvedAsn =
+    asnNumber(ipapi?.asn?.asn) ||
+    asnNumber(ipquery?.isp?.asn) ||
+    asnNumber(ipapiCom?.as) ||
+    asnNumber(ipwho?.connection?.asn) ||
+    asnNumber(geojs?.asn);
+
+  const rdapQuickCC = extractRdapInfo(rdap).countryCode;
+  const needRirCountry = !rdapQuickCC && !normalizeCountryCode(ripeRir?.data?.rirs?.[0]?.country);
+
+  const [radar, radarEntity, ripeHist, rirCountry] = await Promise.all([
+    fetchRadarBotClass(resolvedAsn, env),
+    fetchRadarAsnEntity(resolvedAsn, env),
+    fetchJson(`https://stat.ripe.net/data/routing-history/data.json?resource=${encoded}&min_peers=10`, 5500).catch(() => null),
+    needRirCountry
+      ? fetchJson(`https://stat.ripe.net/data/rir-stats-country/data.json?resource=${encoded}`, 5500).catch(() => null)
+      : Promise.resolve(null),
+  ]);
+
+  return buildReport(
+    ip,
+    { ipapi, ipquery, ipapiCom, ipwho, geojs, freeip, rdap, rirCountry, ripeRir, ripeGeo, ripeHist, shodan, radar, radarEntity, abuseDb },
+    queriedDomain,
+  );
+}
+
+function cacheReport(ip: string, report: Report) {
+  if (cache.size >= CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(ip, { at: Date.now(), report });
+}
+
+async function lookup(ip: string, queriedDomain?: string, env?: Record<string, unknown>): Promise<Report> {
+  const hit = cache.get(ip);
+  if (hit && Date.now() - hit.at < CACHE_TTL) {
+    return queriedDomain ? { ...hit.report, queriedDomain } : hit.report;
+  }
+  const report = await fetchFresh(ip, queriedDomain, env);
+  cacheReport(ip, report);
+  return report;
+}
+
+/* ================= 免费真实街道地址反查 ================= */
+async function lookupGeoAddress(
+  lat: number,
+  lon: number,
+  timezone: string,
+  jitter: boolean,
+): Promise<Record<string, unknown>> {
+  let qLat = lat;
+  let qLon = lon;
+  if (jitter) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 0.004 + Math.random() * 0.012;
+    qLat = Number((lat + Math.sin(angle) * radius).toFixed(5));
+    qLon = Number((lon + Math.cos(angle) * radius).toFixed(5));
+  }
+
+  const cacheKey = `${qLat.toFixed(3)},${qLon.toFixed(3)}`;
+  if (!jitter) {
+    const hit = geoAddrCache.get(cacheKey);
+    if (hit && Date.now() - hit.at < GEOADDR_TTL) {
+      return { ...hit.data, timezone: timezone || hit.data.timezone || "—" };
+    }
+  }
+
+  try {
+    const nom = await fetchJson(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${qLat}&lon=${qLon}&zoom=18&addressdetails=1`,
+      5000,
+      { "user-agent": "IPSpot/1.0 (https://ipspot.org; hezhanleiok@gmail.com)", "accept-language": "en" },
+    );
+    const a = nom?.address;
+    if (a && typeof a === "object") {
+      const streetParts = [a.house_number, a.road || a.pedestrian || a.footway || a.neighbourhood || a.suburb].filter(Boolean);
+      const data = {
+        ok: true,
+        source: "OpenStreetMap",
+        lat: qLat,
+        lon: qLon,
+        street: streetParts.join(" ") || a.quarter || a.city_district || "—",
+        city: a.city || a.town || a.village || a.municipality || a.county || "—",
+        state: a.state || a.province || a.region || "—",
+        country: a.country || "—",
+        countryCode: String(a.country_code || "").toUpperCase(),
+        postcode: a.postcode || "—",
+        timezone: timezone || "—",
+      };
+      if (!jitter) geoAddrCache.set(cacheKey, { at: Date.now(), data });
+      return data;
+    }
+  } catch { /* fallback */ }
+
+  try {
+    const ph = await fetchJson(`https://photon.komoot.io/reverse?lat=${qLat}&lon=${qLon}`, 5000);
+    const p = ph?.features?.[0]?.properties;
+    if (p && typeof p === "object") {
+      const streetParts = [p.housenumber, p.street || p.name || p.district].filter(Boolean);
+      const data = {
+        ok: true,
+        source: "Photon (OSM)",
+        lat: qLat,
+        lon: qLon,
+        street: streetParts.join(" ") || "—",
+        city: p.city || p.county || p.locality || "—",
+        state: p.state || "—",
+        country: p.country || "—",
+        countryCode: String(p.countrycode || "").toUpperCase(),
+        postcode: p.postcode || "—",
+        timezone: timezone || "—",
+      };
+      if (!jitter) geoAddrCache.set(cacheKey, { at: Date.now(), data });
+      return data;
+    }
+  } catch { /* fallback */ }
+
+  try {
+    const bdc = await fetchJson(
+      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${qLat}&longitude=${qLon}&localityLanguage=en`,
+      5000,
+    );
+    if (bdc && bdc.countryName) {
+      const data = {
+        ok: true,
+        source: "BigDataCloud",
+        lat: qLat,
+        lon: qLon,
+        street: bdc.locality || "—",
+        city: bdc.city || bdc.locality || "—",
+        state: bdc.principalSubdivision || "—",
+        country: bdc.countryName || "—",
+        countryCode: String(bdc.countryCode || "").toUpperCase(),
+        postcode: bdc.postcode || "—",
+        timezone: timezone || "—",
+      };
+      if (!jitter) geoAddrCache.set(cacheKey, { at: Date.now(), data });
+      return data;
+    }
+  } catch { /* ignore */ }
+
+  return { ok: false, error: "geoaddr_unavailable", message: "逆地理编码服务暂时不可用" };
+}
+
+/* ================= 5 层免费全球通用 AI 自动容灾引擎 ================= */
+function buildRuleBasedAnalysis(report: Report, clientEnv: any): string {
+  const fraud = report.scores.fraud;
+  const hits = report.signals.filter((s) => s.detected).map((s) => s.label);
+  const envWarn = clientEnv && Array.isArray(clientEnv.warnings) ? clientEnv.warnings : [];
+
+  const chatgpt = fraud <= 20 && report.type.residential ? "极佳，低验证概率" : fraud <= 45 ? "可用，偶发人机校验" : "易降智或被拦截";
+  const biz = fraud <= 18 && report.type.residential && report.location.isNative !== false ? "适合社媒养号 / 跨境店铺" : fraud <= 40 ? "仅建议日常浏览" : "不建议用于注册、起号或支付";
+
+  return [
+    `- **结论**：${report.type.label} · ${report.location.geoTypeLabel} · 风险系数 **${fraud}%**（健康分 ${report.scores.trust}/100，${hits.length ? `命中：${hits.join("、")}` : "无黑名单命中"}）`,
+    `- **AI 平台**：${chatgpt}`,
+    `- **跨境 / 支付**：${biz}`,
+    `- **建议**：${envWarn.length ? envWarn.join("；") : "保持当前网络与本地时区语言一致"}`,
+  ].join("\n");
+}
+
+async function callOpenAiCompat(
+  url: string,
+  apiKey: string,
+  model: string,
+  prompt: string,
+  timeoutMs = 12000,
+): Promise<string> {
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      signal: c.signal,
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.25,
+        max_tokens: 300,
+        messages: [
+          { role: "system", content: "你是严谨的 IP 风控专家，用极简干练的简体中文 4 条短列表作答，禁止客套废话。" },
+          { role: "user", content: prompt },
+        ],
+      }),
+    });
+    if (!res.ok) throw new Error(`ai ${res.status}`);
+    const j = await res.json();
+    const text = String(j?.choices?.[0]?.message?.content || "").trim();
+    if (text.length < 20) throw new Error("empty");
+    return text;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function generateAiReport(
+  report: Report,
+  clientEnv: any,
+  env?: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const envKey = clientEnv ? `${clientEnv.humanScore ?? ""}-${(clientEnv.warnings || []).length}` : "none";
+  const cacheKey = `${report.ip}:${report.scores.fraud}:${envKey}`;
+  const hit = aiCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < AI_CACHE_TTL) return { ...hit.data, cached: true };
+
+  const prompt = [
+    "根据以下真实 IP 情报，用极简中文输出 4 条 Markdown 列表（总字数 160 字内）：1.**定性** 2.**AI平台(ChatGPT/Claude/Gemini)适用度** 3.**跨境/社媒/支付适用度** 4.**一条实操建议**。",
+    JSON.stringify({
+      ip: report.ip,
+      geo: `${report.location.countryCode} ${report.location.city}`,
+      geoType: report.location.geoTypeLabel,
+      type: report.type.label,
+      company: report.company.name,
+      fraud: report.scores.fraud,
+      trust: report.scores.trust,
+      humanRatio: report.humanRatio,
+      abuse: report.abuse || null,
+      exposure: report.exposure.tags,
+      signals: report.signals.filter((s) => s.detected).map((s) => s.label),
+      envWarnings: clientEnv?.warnings || [],
+    }),
+  ].join("\n");
+
+  // 按免费高可用顺序依次尝试（均从环境变量/Secret 读取，无任何硬编码 Key）
+  const providers: Array<{ name: string; run: () => Promise<string> }> = [];
+
+  const zhipuKey = getEnv(env, "ZHIPU_API_KEY");
+  if (zhipuKey) {
+    const model = getEnv(env, "ZHIPU_MODEL") || "glm-4-flash-250414";
+    providers.push({
+      name: "智谱 GLM-4-Flash",
+      run: () => callOpenAiCompat("https://open.bigmodel.cn/api/paas/v4/chat/completions", zhipuKey, model, prompt),
+    });
+  }
+
+  const sfKey = getEnv(env, "SILICONFLOW_API_KEY");
+  if (sfKey) {
+    const model = getEnv(env, "SILICONFLOW_MODEL") || "Qwen/Qwen2.5-7B-Instruct";
+    providers.push({
+      name: "硅基流动 Qwen2.5",
+      run: () => callOpenAiCompat("https://api.siliconflow.cn/v1/chat/completions", sfKey, model, prompt),
+    });
+  }
+
+  const groqKey = getEnv(env, "GROQ_API_KEY");
+  if (groqKey) {
+    const model = getEnv(env, "GROQ_MODEL") || "llama-3.1-8b-instant";
+    providers.push({
+      name: "Groq Llama 3.1",
+      run: () => callOpenAiCompat("https://api.groq.com/openai/v1/chat/completions", groqKey, model, prompt),
+    });
+  }
+
+  const cfAi = (env as any)?.AI;
+  if (cfAi && typeof cfAi.run === "function") {
+    const model = getEnv(env, "CF_AI_MODEL") || "@cf/qwen/qwen2.5-7b-instruct-fast";
+    providers.push({
+      name: "Cloudflare Workers AI",
+      run: async () => {
+        const aiRes = await cfAi.run(model, {
+          messages: [
+            { role: "system", content: "你是严谨的 IP 风控专家，用极简干练的简体中文 4 条短列表作答。" },
+            { role: "user", content: prompt },
+          ],
+          max_tokens: 280,
+        });
+        const text = String(aiRes?.response || aiRes?.choices?.[0]?.message?.content || "").trim();
+        if (text.length < 20) throw new Error("empty");
+        return text;
+      },
+    });
+  }
+
+  const customKey = getEnv(env, "AI_API_KEY");
+  if (customKey) {
+    const url = getEnv(env, "AI_API_URL") || "https://open.bigmodel.cn/api/paas/v4/chat/completions";
+    const model = getEnv(env, "AI_MODEL") || "glm-4-flash";
+    providers.push({
+      name: model,
+      run: () => callOpenAiCompat(url, customKey, model, prompt),
+    });
+  }
+
+  for (const p of providers) {
+    try {
+      const text = await p.run();
+      const data = { ok: true, provider: p.name, text };
+      aiCache.set(cacheKey, { at: Date.now(), data });
+      return data;
+    } catch { /* 自动降级下一个免费通道 */ }
+  }
+
+  const data = { ok: true, provider: "规则引擎", text: buildRuleBasedAnalysis(report, clientEnv) };
+  aiCache.set(cacheKey, { at: Date.now(), data });
+  return data;
+}
+
+/* ================= ASN & BGP Live Monitor ================= */
+const asnCache = new Map<number, { at: number; data: Record<string, unknown> }>();
+const ASN_TTL = 60 * 60 * 1000;
+
+type BgpRow = { ts: number; pfx: string; origin: number | null; type: "announce" | "withdraw" };
+type BgpSnapshot = { ok: true; source: "ris-live"; collectedAt: string; rows: BgpRow[] };
+const BGP_TTL = 25 * 1000;
+let bgpSnapshot: { at: number; data: BgpSnapshot } | null = null;
+let bgpPending: Promise<BgpSnapshot> | null = null;
+
+function parseBgpMessage(msg: any, rows: BgpRow[]) {
+  if (msg?.type !== "ris_message") return;
+  const d = msg.data;
+  if (!d || d.type !== "UPDATE") return;
+  const path = Array.isArray(d.path) ? d.path : [];
+  const origin = path.length && Number.isInteger(path[path.length - 1]) ? path[path.length - 1] : null;
+  const ts = (typeof d.timestamp === "number" ? d.timestamp : Date.now() / 1000) * 1000;
+  for (const ann of d.announcements || []) {
+    for (const pfx of ann?.prefixes || []) {
+      if (typeof pfx === "string" && pfx.includes("/")) rows.push({ ts, pfx, origin, type: "announce" });
+    }
+  }
+  for (const pfx of d.withdrawals || []) {
+    if (typeof pfx === "string" && pfx.includes("/")) rows.push({ ts, pfx, origin: null, type: "withdraw" });
+  }
+}
+
+async function collectBgpSnapshot(): Promise<BgpSnapshot> {
+  const rows: BgpRow[] = [];
+  return await new Promise<BgpSnapshot>((resolve, reject) => {
+    let settled = false;
+    let ws: any;
+    const finish = (err?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { ws?.close(); } catch {}
+      if (err) reject(err);
+      else resolve({ ok: true, source: "ris-live", collectedAt: new Date().toISOString(), rows: rows.slice(-100) });
+    };
+    const timer = setTimeout(() => finish(rows.length ? undefined : new Error("no_updates")), 6000);
+    const onMessage = (e: any) => {
+      let msg: any;
+      try { msg = JSON.parse(typeof e.data === "string" ? e.data : ""); } catch { return; }
+      parseBgpMessage(msg, rows);
+      if (rows.length >= 100) finish();
+    };
+    const subscribe = () => {
+      try { ws.send(JSON.stringify({ type: "ris_subscribe", data: { type: "UPDATE" } })); }
+      catch { finish(new Error("subscribe_failed")); }
+    };
+    const attach = (sock: any) => {
+      ws = sock;
+      if (typeof ws.addEventListener === "function") {
+        ws.addEventListener("message", onMessage);
+        ws.addEventListener("close", () => finish(rows.length ? undefined : new Error("closed_early")));
+        ws.addEventListener("error", () => finish(new Error("websocket_error")));
+      } else {
+        ws.onmessage = onMessage;
+        ws.onclose = () => finish(rows.length ? undefined : new Error("closed_early"));
+        ws.onerror = () => finish(new Error("websocket_error"));
+      }
+    };
+    const url = "https://ris-live.ripe.net/v1/ws/?client=ipspot-pages";
+    if (typeof WebSocket !== "undefined") {
+      const sock = new WebSocket(url.replace(/^https:/, "wss:"));
+      attach(sock);
+      sock.addEventListener("open", subscribe);
+      sock.addEventListener("error", () => finish(new Error("connect_failed")));
+    } else {
+      fetch(url, { headers: { Upgrade: "websocket" } }).then((res) => {
+        const sock = (res as any).webSocket;
+        if (!sock || res.status !== 101) { finish(new Error("websocket_upgrade_failed")); return; }
+        sock.accept();
+        attach(sock);
+        subscribe();
+      }).catch(() => finish(new Error("connect_failed")));
+    }
+  });
+}
+
+async function lookupBgpFeed(): Promise<BgpSnapshot> {
+  if (bgpSnapshot && Date.now() - bgpSnapshot.at < BGP_TTL) return bgpSnapshot.data;
+  if (!bgpPending) {
+    bgpPending = collectBgpSnapshot()
+      .then((data) => { bgpSnapshot = { at: Date.now(), data }; return data; })
+      .finally(() => { bgpPending = null; });
+  }
+  return bgpPending;
+}
+
+async function lookupAsn(asn: number, prefix: string | null): Promise<Record<string, unknown>> {
+  const hit = asnCache.get(asn);
+  if (hit && Date.now() - hit.at < ASN_TTL) return hit.data;
+
+  let name = "";
+  let country = "";
+  let countryCode = "";
+  try {
+    const raw = await fetchJson(`https://stat.ripe.net/data/as-names/data.json?resource=AS${asn}`, 6000);
+    name = raw?.data?.names?.[String(asn)] ?? "";
+  } catch { /* optional */ }
+
+  if (prefix) {
+    const base = prefix.split("/")[0];
+    const ip = publicIp(base);
+    if (ip) {
+      try {
+        const raw = await fetchJson(`https://api.ipquery.io/${encodeURIComponent(ip)}`, 5000);
+        if (raw && raw.location) {
+          country = raw.location.country ?? "";
+          countryCode = (raw.location.country_code ?? "").toUpperCase();
+          if (!name) name = raw.isp?.org ?? raw.isp?.isp ?? "";
+        }
+      } catch { /* optional */ }
+    }
+  }
+
+  const data = { ok: true, asn: `AS${asn}`, name, country, countryCode };
+  if (asnCache.size >= 2000) {
+    const oldest = asnCache.keys().next().value;
+    if (oldest !== undefined) asnCache.delete(oldest);
+  }
+  asnCache.set(asn, { at: Date.now(), data });
+  return data;
+}
+
+/* ================= Main Handler ================= */
+export async function handler(req: Request, env?: Record<string, unknown>): Promise<Response> {
+  const url = new URL(req.url);
+
+  if (req.method === "POST" && url.searchParams.get("action") === "ai") {
+    try {
+      const payload = await req.json();
+      const targetIp = publicIp(payload?.ip);
+      if (!targetIp) return json({ ok: false, error: "invalid_ip", message: "缺少合法的目标 IP" }, 400);
+      const report = await lookup(targetIp, undefined, env);
+      return json(await generateAiReport(report, payload?.clientEnv || null, env));
+    } catch {
+      return json({ ok: false, error: "ai_failed", message: "AI 诊断失败，请稍后重试" }, 500);
+    }
+  }
+
+  if (req.method !== "GET") {
+    return json({ ok: false, error: "method_not_allowed", message: "仅支持 GET 查询或 POST AI 诊断" }, 405);
+  }
+
+  if (url.searchParams.get("action") === "geoaddr") {
+    const lat = Number(url.searchParams.get("lat"));
+    const lon = Number(url.searchParams.get("lon"));
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+      return json({ ok: false, error: "invalid_coords", message: "缺少有效经纬度坐标" }, 400);
+    }
+    const tz = url.searchParams.get("tz") || "";
+    const jitter = url.searchParams.get("jitter") === "1";
+    const result = await lookupGeoAddress(lat, lon, tz, jitter);
+    return json(result, result.ok ? 200 : 502);
+  }
+
+  if (url.searchParams.get("feed") === "bgp") {
+    try { return json(await lookupBgpFeed()); }
+    catch { return json({ ok: false, error: "upstream_unavailable", message: "BGP 路由流暂不可用" }, 502); }
+  }
+
+  const asnParam = url.searchParams.get("asn");
+  if (asnParam !== null) {
+    const asn = Number(String(asnParam).replace(/^AS/i, ""));
+    if (!Number.isInteger(asn) || asn < 1 || asn > 4294967295) {
+      return json({ ok: false, error: "invalid_asn", message: "ASN 格式无效" }, 400);
+    }
+    try { return json(await lookupAsn(asn, url.searchParams.get("pfx"))); }
+    catch { return json({ ok: false, error: "upstream_unavailable", message: "ASN 数据源暂不可用" }, 502); }
+  }
+
+  const q = url.searchParams.get("q");
+  let ip: string | null = null;
+  let queriedDomain: string | undefined;
+
+  if (q !== null && q.trim() !== "") {
+    const trimmed = q.trim().replace(/^https?:\/\//i, "").split("/")[0].trim();
+    ip = publicIp(trimmed);
+    if (!ip) {
+      if (IPV4_RE.test(trimmed) || IPV6_RE.test(trimmed)) {
+        return json({ ok: false, error: "private_ip", message: "内网或保留地址无法检测" }, 400);
+      }
+      if (DOMAIN_RE.test(trimmed)) {
+        const resolved = await resolveDomain(trimmed);
+        if (resolved) { ip = resolved; queriedDomain = trimmed; }
+        else return json({ ok: false, error: "domain_resolve_failed", message: `无法解析域名 ${trimmed}` }, 400);
+      } else {
+        return json({ ok: false, error: "invalid_ip", message: "请输入合法的 IPv4、IPv6 或域名" }, 400);
+      }
+    }
+  } else {
+    ip = clientIpFromHeaders(req);
+    if (!ip) return json({ ok: false, error: "ip_unavailable", message: "无法自动识别 IP，请手动输入" }, 422);
+  }
+
+  try {
+    const report = await lookup(ip, queriedDomain, env);
+    const conn = connectionMetaFromReq(req);
+    return json(conn ? { ...report, connection: conn } : report);
+  } catch {
+    return json({ ok: false, error: "upstream_unavailable", message: "IP 数据源暂不可用，请稍后重试" }, 502);
+  }
+}

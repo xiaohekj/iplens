@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="fBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#090E1C" />
+    </linearGradient>
+    <linearGradient id="fPin" x1="15%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="55%" stop-color="#6366F1" />
+      <stop offset="100%" stop-color="#8B5CF6" />
+    </linearGradient>
+    <linearGradient id="fDot" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6EE7B7" />
+      <stop offset="100%" stop-color="#22D3EE" />
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#fBg)" stroke="#38BDF8" stroke-opacity="0.24" stroke-width="1.5" />
+  <path d="M32 12C22.06 12 14 19.86 14 29.55C14 40.9 28.4 51.4 31.1 53.25C31.65 53.62 32.35 53.62 32.9 53.25C35.6 51.4 50 40.9 50 29.55C50 19.86 41.94 12 32 12Z" fill="url(#fPin)" fill-opacity="0.16" stroke="url(#fPin)" stroke-width="3.6" stroke-linejoin="round" />
+  <circle cx="32" cy="29" r="9.5" fill="#0B1120" stroke="#38BDF8" stroke-opacity="0.35" stroke-width="1.4" />
+  <circle cx="32" cy="29" r="5" fill="url(#fDot)" />
+</svg>
