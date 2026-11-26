@@ -391,7 +391,7 @@ async function resolveDomain(domain: string): Promise<string | null> {
   try {
     const data = await fetchJson(
       `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=A`,
-      4000,
+      3000,
       { accept: "application/dns-json" },
     );
     for (const a of Array.isArray(data?.Answer) ? data.Answer : []) {
@@ -402,7 +402,7 @@ async function resolveDomain(domain: string): Promise<string | null> {
     }
     const data6 = await fetchJson(
       `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=AAAA`,
-      4000,
+      3000,
       { accept: "application/dns-json" },
     );
     for (const a of Array.isArray(data6?.Answer) ? data6.Answer : []) {
@@ -484,7 +484,7 @@ async function fetchRadarBotClass(
   try {
     const raw = await fetchJson(
       `https://api.cloudflare.com/client/v4/radar/http/summary/bot_class?asn=${asnNum}&dateRange=7d&format=json`,
-      5000,
+      3200,
       { authorization: `Bearer ${token}` },
     );
     const summary = raw?.result?.summary_0;
@@ -531,7 +531,7 @@ async function fetchRadarAsnEntity(
   try {
     const raw = await fetchJson(
       `https://api.cloudflare.com/client/v4/radar/entities/asns/${asnNum}?format=json`,
-      5000,
+      3200,
       { authorization: `Bearer ${token}` },
     );
     const a = raw?.result?.asn;
@@ -1553,11 +1553,46 @@ function buildReport(
   };
 }
 
+async function withSoftDeadline<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return await Promise.race([
+    promise,
+    new Promise<T>((resolve) => {
+      timer = setTimeout(() => resolve(fallback), Math.max(0, ms));
+    }),
+  ]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
+}
+
+function resolveWhenPrimaryReady(checks: Array<Promise<boolean>>): Promise<void> {
+  return new Promise((resolve) => {
+    let pending = checks.length;
+    let settled = false;
+    for (const p of checks) {
+      p.then((ok) => {
+        pending--;
+        if (!settled && (ok || pending <= 0)) {
+          settled = true;
+          resolve();
+        }
+      }).catch(() => {
+        pending--;
+        if (!settled && pending <= 0) {
+          settled = true;
+          resolve();
+        }
+      });
+    }
+  });
+}
+
 async function fetchFresh(
   ip: string,
   queriedDomain?: string,
   env?: Record<string, unknown>,
 ): Promise<Report> {
+  const startedAt = Date.now();
   const encoded = encodeURIComponent(ip);
   const abuseKey = getEnvAny(env, ["ABUSEIPDB_KEY", "ABUSEIPDB_API_KEY", "ABUSE_KEY"]);
   const ipapiKey = getEnvAny(env, ["IPAPI_IS_KEY"]);
@@ -1565,38 +1600,140 @@ async function fetchFresh(
   const ip2locKey = getEnvAny(env, ["IP2LOCATION_KEY"]);
   const pcKey = getEnvAny(env, ["PROXYCHECK_KEY"]);
 
+  // Edge-triggered early ASN resolution so Cloudflare Radar starts immediately instead of waiting for slow tails.
+  let earlyAsnResolved = false;
+  let resolveEarlyAsn!: (asn: number) => void;
+  const earlyAsnPromise = new Promise<number>((resolve) => {
+    resolveEarlyAsn = resolve;
+  });
+  const watchAsn = <T>(p: Promise<T>, extract: (val: T) => number): Promise<T> =>
+    p.then((val) => {
+      if (!earlyAsnResolved) {
+        const n = extract(val);
+        if (n > 0) {
+          earlyAsnResolved = true;
+          resolveEarlyAsn(n);
+        }
+      }
+      return val;
+    });
+
+  const ipapiP = watchAsn(
+    fetchJson(`https://api.ipapi.is/?q=${encoded}${ipapiKey ? `&key=${encodeURIComponent(ipapiKey)}` : ""}`, 3400).catch(() => null),
+    (x) => asnNumber(typeof x?.asn === "string" ? x.asn : x?.asn?.asn),
+  );
+  const ipqueryP = watchAsn(
+    fetchJson(`https://api.ipquery.io/${encoded}`, 3400).catch(() => null),
+    (x) => asnNumber(x?.isp?.asn),
+  );
+  const ipapiComP = watchAsn(
+    fetchJson(
+      `http://ip-api.com/json/${encoded}?fields=status,country,countryCode,regionName,city,lat,lon,timezone,zip,isp,org,as,asname,reverse,mobile,proxy,hosting`,
+      3200,
+    ).catch(() => null),
+    (x) => asnNumber(x?.as),
+  );
+  const ipwhoP = watchAsn(
+    fetchJson(`https://ipwho.is/${encoded}`, 3200).catch(() => null),
+    (x) => asnNumber(x?.connection?.asn),
+  );
+  const geojsP = watchAsn(
+    fetchJson(`https://get.geojs.io/v1/ip/geo/${encoded}.json`, 3000).catch(() => null),
+    (x) => asnNumber(x?.asn),
+  );
+  const freeipP = fetchJson(`https://freeipapi.com/api/json/${encoded}`, 3000).catch(() => null);
+  const ipinfoP = fetchJson(`https://ipinfo.io/${encoded}/json${ipinfoToken ? `?token=${encodeURIComponent(ipinfoToken)}` : ""}`, 3200).catch(() => null);
+  const ip2locP = watchAsn(
+    fetchJson(`https://api.ip2location.io/?ip=${encoded}${ip2locKey ? `&key=${encodeURIComponent(ip2locKey)}` : ""}`, 3400).catch(() => null),
+    (x) => asnNumber(x?.asn),
+  );
+  const ipsbP = watchAsn(
+    fetchJson(`https://api.ip.sb/geoip/${encoded}`, 3000).catch(() => null),
+    (x) => asnNumber(x?.asn),
+  );
+  const ipguideP = watchAsn(
+    fetchJson(`https://ip.guide/${encoded}`, 3200).catch(() => null),
+    (x) => asnNumber(x?.network?.autonomous_system?.asn),
+  );
+  const ipapicoP = fetchJson(`https://ipapi.co/${encoded}/json/`, 3000).catch(() => null);
+
+  const proxycheckP = fetchJson(`https://proxycheck.io/v2/${encoded}?vpn=1&asn=1${pcKey ? `&key=${encodeURIComponent(pcKey)}` : ""}`, 3400).catch(() => null);
+  const onionooP = fetchJson(`https://onionoo.torproject.org/details?search=${encoded}&limit=1`, 3400).catch(() => null);
+  const sfsP = fetchJson(`https://api.stopforumspam.org/api?ip=${encoded}&json`, 3000).catch(() => null);
+  const rdapP = fetchJson(`https://rdap.org/ip/${encoded}`, 3500).catch(() => null);
+  const ripeRirP = fetchJson(`https://stat.ripe.net/data/rir/data.json?resource=${encoded}`, 3500).catch(() => null);
+  const ripeGeoP = fetchJson(`https://stat.ripe.net/data/maxmind-geo-lite/data.json?resource=${encoded}`, 3500).catch(() => null);
+  // All IP-only RIR/history lookups run concurrently in wave 1; Radar starts early on first resolved ASN.
+  const ripeHistP = fetchJson(`https://stat.ripe.net/data/routing-history/data.json?resource=${encoded}&min_peers=10`, 3000).catch(() => null);
+  const rirCountryP = fetchJson(`https://stat.ripe.net/data/rir-stats-country/data.json?resource=${encoded}`, 3000).catch(() => null);
+  const shodanP = IPV4_RE.test(ip) ? fetchJson(`https://internetdb.shodan.io/${encoded}`, 3000).catch(() => null) : Promise.resolve(null);
+  const abuseDbP = abuseKey
+    ? fetchJson(`https://api.abuseipdb.com/api/v2/check?ipAddress=${encoded}&maxAgeInDays=90`, 3000, { key: abuseKey }).catch(() => null)
+    : Promise.resolve(null);
+
+  const radarP = earlyAsnPromise.then((asn) => (asn ? fetchRadarBotClass(asn, env) : null));
+  const radarEntityP = earlyAsnPromise.then((asn) => (asn ? fetchRadarAsnEntity(asn, env) : null));
+
+  const primaryChecks: Array<Promise<boolean>> = [
+    ipapiP.then((d) => !!(d && d.ip && !d.error)),
+    ipqueryP.then((d) => !!(d && d.ip && d.location)),
+    ipapiComP.then((d) => !!(d && d.status === "success")),
+    ipwhoP.then((d) => !!(d && d.success === true)),
+    geojsP.then((d) => !!(d && d.country_code)),
+    freeipP.then((d) => !!(d && d.countryCode)),
+    ipinfoP.then((d) => !!(d && d.country && !d.error)),
+    ip2locP.then((d) => !!(d && d.country_code && !d.error)),
+    ipsbP.then((d) => !!(d && d.country_code)),
+    ipguideP.then((d) => !!d?.location),
+    ipapicoP.then((d) => !!(d && d.country_code && !d.error)),
+  ];
+
+  // Guarantee earlyAsnPromise settles once primary feeds finish if none yielded an ASN.
+  Promise.all(primaryChecks).then(() => {
+    if (!earlyAsnResolved) {
+      earlyAsnResolved = true;
+      resolveEarlyAsn(0);
+    }
+  });
+
+  // Wait until at least one primary GeoIP source succeeds (or all primary sources fail).
+  await resolveWhenPrimaryReady(primaryChecks);
+
+  // Single bounded budget (~3.0s total) for remaining feeds & Radar; never serialize extra waterfalls.
+  const totalBudgetMs = 3000;
+  const remaining = Math.max(400, totalBudgetMs - (Date.now() - startedAt));
+
   const [
     ipapi, ipquery, ipapiCom, ipwho, geojs, freeip,
     ipinfo, ip2loc, ipsb, ipguide, ipapico,
     proxycheck, onionoo, sfs,
-    rdap, ripeRir, ripeGeo, shodan, abuseDb,
-  ] =
-    await Promise.all([
-      fetchJson(`https://api.ipapi.is/?q=${encoded}${ipapiKey ? `&key=${encodeURIComponent(ipapiKey)}` : ""}`, 4800).catch(() => null),
-      fetchJson(`https://api.ipquery.io/${encoded}`, 5000).catch(() => null),
-      fetchJson(
-        `http://ip-api.com/json/${encoded}?fields=status,country,countryCode,regionName,city,lat,lon,timezone,zip,isp,org,as,asname,reverse,mobile,proxy,hosting`,
-        4500,
-      ).catch(() => null),
-      fetchJson(`https://ipwho.is/${encoded}`, 4500).catch(() => null),
-      fetchJson(`https://get.geojs.io/v1/ip/geo/${encoded}.json`, 4500).catch(() => null),
-      fetchJson(`https://freeipapi.com/api/json/${encoded}`, 4500).catch(() => null),
-      fetchJson(`https://ipinfo.io/${encoded}/json${ipinfoToken ? `?token=${encodeURIComponent(ipinfoToken)}` : ""}`, 4500).catch(() => null),
-      fetchJson(`https://api.ip2location.io/?ip=${encoded}${ip2locKey ? `&key=${encodeURIComponent(ip2locKey)}` : ""}`, 4800).catch(() => null),
-      fetchJson(`https://api.ip.sb/geoip/${encoded}`, 4500).catch(() => null),
-      fetchJson(`https://ip.guide/${encoded}`, 4800).catch(() => null),
-      fetchJson(`https://ipapi.co/${encoded}/json/`, 4500).catch(() => null),
-      fetchJson(`https://proxycheck.io/v2/${encoded}?vpn=1&asn=1${pcKey ? `&key=${encodeURIComponent(pcKey)}` : ""}`, 4800).catch(() => null),
-      fetchJson(`https://onionoo.torproject.org/details?search=${encoded}&limit=1`, 4800).catch(() => null),
-      fetchJson(`https://api.stopforumspam.org/api?ip=${encoded}&json`, 4500).catch(() => null),
-      fetchJson(`https://rdap.org/ip/${encoded}`, 6000).catch(() => null),
-      fetchJson(`https://stat.ripe.net/data/rir/data.json?resource=${encoded}`, 6500).catch(() => null),
-      fetchJson(`https://stat.ripe.net/data/maxmind-geo-lite/data.json?resource=${encoded}`, 6500).catch(() => null),
-      IPV4_RE.test(ip) ? fetchJson(`https://internetdb.shodan.io/${encoded}`, 4200).catch(() => null) : Promise.resolve(null),
-      abuseKey
-        ? fetchJson(`https://api.abuseipdb.com/api/v2/check?ipAddress=${encoded}&maxAgeInDays=90`, 4200, { key: abuseKey }).catch(() => null)
-        : Promise.resolve(null),
-    ]);
+    rdap, ripeRir, ripeGeo, ripeHist, rirCountryRaw, shodan, abuseDb,
+    radar, radarEntity,
+  ] = await Promise.all([
+    withSoftDeadline(ipapiP, remaining, null),
+    withSoftDeadline(ipqueryP, remaining, null),
+    withSoftDeadline(ipapiComP, remaining, null),
+    withSoftDeadline(ipwhoP, remaining, null),
+    withSoftDeadline(geojsP, remaining, null),
+    withSoftDeadline(freeipP, remaining, null),
+    withSoftDeadline(ipinfoP, remaining, null),
+    withSoftDeadline(ip2locP, remaining, null),
+    withSoftDeadline(ipsbP, remaining, null),
+    withSoftDeadline(ipguideP, remaining, null),
+    withSoftDeadline(ipapicoP, remaining, null),
+    withSoftDeadline(proxycheckP, remaining, null),
+    withSoftDeadline(onionooP, remaining, null),
+    withSoftDeadline(sfsP, remaining, null),
+    withSoftDeadline(rdapP, remaining, null),
+    withSoftDeadline(ripeRirP, remaining, null),
+    withSoftDeadline(ripeGeoP, remaining, null),
+    withSoftDeadline(ripeHistP, remaining, null),
+    withSoftDeadline(rirCountryP, remaining, null),
+    withSoftDeadline(shodanP, remaining, null),
+    withSoftDeadline(abuseDbP, remaining, null),
+    withSoftDeadline(radarP, remaining, null),
+    withSoftDeadline(radarEntityP, remaining, null),
+  ]);
 
   const anyPrimaryOk =
     (ipapi && ipapi.ip && !ipapi.error) ||
@@ -1613,27 +1750,9 @@ async function fetchFresh(
 
   if (!anyPrimaryOk) throw new Error("upstream_unavailable");
 
-  const resolvedAsn =
-    asnNumber(typeof ipapi?.asn === "string" ? ipapi.asn : ipapi?.asn?.asn) ||
-    asnNumber(ipquery?.isp?.asn) ||
-    asnNumber(ipapiCom?.as) ||
-    asnNumber(ipwho?.connection?.asn) ||
-    asnNumber(ip2loc?.asn) ||
-    asnNumber(ipsb?.asn) ||
-    asnNumber(ipguide?.network?.autonomous_system?.asn) ||
-    asnNumber(geojs?.asn);
-
   const rdapQuickCC = extractRdapInfo(rdap).countryCode;
   const needRirCountry = !rdapQuickCC && !normalizeCountryCode(ripeRir?.data?.rirs?.[0]?.country);
-
-  const [radar, radarEntity, ripeHist, rirCountry] = await Promise.all([
-    fetchRadarBotClass(resolvedAsn, env),
-    fetchRadarAsnEntity(resolvedAsn, env),
-    fetchJson(`https://stat.ripe.net/data/routing-history/data.json?resource=${encoded}&min_peers=10`, 5500).catch(() => null),
-    needRirCountry
-      ? fetchJson(`https://stat.ripe.net/data/rir-stats-country/data.json?resource=${encoded}`, 5500).catch(() => null)
-      : Promise.resolve(null),
-  ]);
+  const rirCountry = needRirCountry ? rirCountryRaw : null;
 
   return buildReport(
     ip,
@@ -1700,7 +1819,7 @@ async function lookupGeoAddress(
   try {
     const nom = await fetchJson(
       `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${qLat}&lon=${qLon}&zoom=18&addressdetails=1`,
-      5000,
+      3200,
       { "user-agent": "IPSpot/1.0 (https://ipspot.org; hezhanleiok@gmail.com)", "accept-language": "en" },
     );
     const a = nom?.address;
@@ -1725,7 +1844,7 @@ async function lookupGeoAddress(
   } catch { /* fallback */ }
 
   try {
-    const ph = await fetchJson(`https://photon.komoot.io/reverse?lat=${qLat}&lon=${qLon}`, 5000);
+    const ph = await fetchJson(`https://photon.komoot.io/reverse?lat=${qLat}&lon=${qLon}`, 3200);
     const p = ph?.features?.[0]?.properties;
     if (p && typeof p === "object") {
       const streetParts = [p.housenumber, p.street || p.name || p.district].filter(Boolean);
@@ -2208,6 +2327,12 @@ export async function handler(req: Request, env?: Record<string, unknown>): Prom
 
   if (req.method !== "GET") {
     return json({ ok: false, error: "method_not_allowed", message: "Method not allowed" }, 405);
+  }
+
+  if (url.searchParams.get("action") === "whoami") {
+    const clientIp = clientIpFromHeaders(req);
+    if (!clientIp) return json({ ok: false, error: "ip_unavailable", message: "Unable to detect client IP" }, 422);
+    return json({ ok: true, ip: clientIp });
   }
 
   if (url.searchParams.get("action") === "geoaddr") {

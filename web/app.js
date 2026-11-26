@@ -1617,28 +1617,17 @@ function bindToggle(btnId, boxId, onOpen) {
   });
 }
 
-let revealScrollDir = "down";
-let revealLastY = typeof window !== "undefined" ? window.scrollY : 0;
 let revealObserver = null;
 function initRevealObserver() {
-  if (revealObserver) return;
-  window.addEventListener("scroll", () => {
-    const cur = window.scrollY;
-    revealScrollDir = cur >= revealLastY ? "down" : "up";
-    revealLastY = cur;
-  }, { passive: true });
-  if (typeof IntersectionObserver !== "function") return;
+  if (revealObserver || typeof IntersectionObserver !== "function") return;
   revealObserver = new IntersectionObserver((entries) => {
     for (const en of entries) {
       if (en.isIntersecting) {
-        en.target.classList.remove("from-up");
         en.target.classList.add("in");
-      } else if (!en.target.closest("[hidden]")) {
-        en.target.classList.remove("in");
-        en.target.classList.toggle("from-up", revealScrollDir === "up");
+        revealObserver.unobserve(en.target);
       }
     }
-  }, { threshold: 0.06, rootMargin: "0px 0px -16px 0px" });
+  }, { threshold: 0, rootMargin: "0px 0px 40px 0px" });
 }
 function observeReveals() {
   initRevealObserver();
@@ -1649,24 +1638,33 @@ function observeReveals() {
   }
   const vh = window.innerHeight || 800;
   els.forEach((el) => {
-    if (el.closest("[hidden]")) return;
-    revealObserver.observe(el);
+    if (el.classList.contains("in") || el.closest("[hidden]")) return;
     const r = el.getBoundingClientRect();
-    if (r.top < vh && r.bottom > 0) {
-      el.classList.remove("from-up");
+    if (r.top < vh + 40 && r.bottom > 0) {
       el.classList.add("in");
+      revealObserver.unobserve(el);
+    } else {
+      revealObserver.observe(el);
     }
   });
 }
 
 /* ================= Cache & History ================= */
+const OWN_CACHE_TTL = 10 * 60 * 1000;
 function readOwnCache() {
   try {
     const r = JSON.parse(localStorage.getItem(OWN_KEY));
-    return r && r.ok && r.ip && r.humanRatio && r.exposure && Array.isArray(r.registryHistory) ? r : null;
+    if (!r || !r.ok || !r.ip || !r.humanRatio || !r.exposure || !Array.isArray(r.registryHistory)) return null;
+    if (r._cachedAt && Date.now() - r._cachedAt > OWN_CACHE_TTL) return null;
+    return r;
   } catch { return null; }
 }
-function writeOwnCache(r) { try { localStorage.setItem(OWN_KEY, JSON.stringify(r)); } catch {} }
+function writeOwnCache(r) {
+  try { localStorage.setItem(OWN_KEY, JSON.stringify({ ...r, _cachedAt: Date.now() })); } catch {}
+}
+function clearOwnCache() {
+  try { localStorage.removeItem(OWN_KEY); } catch {}
+}
 function getHistory() { try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; } catch { return []; } }
 function pushHistory(val) {
   let list = getHistory().filter((x) => x !== val);
@@ -1683,7 +1681,11 @@ function renderHistory() {
   for (const item of list) {
     const b = document.createElement("button");
     b.type = "button"; b.className = "chip"; b.textContent = item;
-    b.addEventListener("click", () => { location.hash = `#ip=${encodeURIComponent(item)}`; });
+    b.addEventListener("click", () => {
+      const next = `#ip=${encodeURIComponent(item)}`;
+      if (location.hash === next) query(item);
+      else location.hash = next;
+    });
     box.appendChild(b);
   }
 }
@@ -2536,7 +2538,10 @@ const exit = {
 /* ================= Core Query ================= */
 async function fetchReport(q) {
   const url = q ? `${API}?q=${encodeURIComponent(q)}` : API;
-  const res = await fetch(url, state.controller ? { signal: state.controller.signal } : {});
+  const res = await fetch(url, {
+    cache: "no-store",
+    ...(state.controller ? { signal: state.controller.signal } : {}),
+  });
   let d = null; try { d = await res.json(); } catch {}
   if (!res.ok || !d || d.ok !== true) { const e = new Error(d?.message || t("state.failed")); e.code = d?.error; throw e; }
   return d;
@@ -2557,7 +2562,25 @@ async function browserIp() {
   } catch {}
   return null;
 }
-async function detectOwnIp() {
+async function probeCurrentIp() {
+  try {
+    const res = await fetchTimeout(`${API}?action=whoami`, 1200, {
+      cache: "no-store",
+      ...(state.controller ? { signal: state.controller.signal } : {}),
+    });
+    if (res.ok) {
+      const d = await res.json();
+      if (d?.ok && d.ip) return { ip: d.ip, fromHeader: true };
+    }
+    if (res.status === 422) {
+      const ip = await browserIp();
+      if (ip) return { ip, fromHeader: false };
+    }
+  } catch {}
+  return null;
+}
+async function detectOwnIp(knownProbe = null) {
+  if (knownProbe?.ip) return await fetchReport(knownProbe.fromHeader ? null : knownProbe.ip);
   try { return await fetchReport(null); }
   catch (e) {
     if (e.code === "ip_unavailable") {
@@ -2570,24 +2593,45 @@ async function detectOwnIp() {
 }
 async function ownReport() { if (!state.own) state.own = await detectOwnIp(); return state.own; }
 
-async function query(target) {
+async function query(target, forceFresh = false) {
   const seq = ++state.reqSeq; state.queryStarted = true;
   if (state.controller) state.controller.abort();
   state.controller = new AbortController();
   state.lastQuery = target || null;
 
   let showedCache = false;
+  let cachedFallback = null;
+  let knownProbe = null;
+
   if (target) {
     $("search-input").value = target;
     $("loading").hidden = false; $("error").hidden = true;
   } else {
-    const cached = readOwnCache();
-    if (cached) { showedCache = true; state.own = cached; $("error").hidden = true; renderReport(cached); }
-    else { $("loading").hidden = false; $("error").hidden = true; }
+    if (forceFresh) clearOwnCache();
+    cachedFallback = forceFresh ? null : readOwnCache();
+    $("error").hidden = true;
+    if (cachedFallback) {
+      // Confirm live IP via lightweight header endpoint (~30-100ms) before showing cache so VPN/IP switches never flash stale IP.
+      $("loading").hidden = false;
+      knownProbe = await probeCurrentIp();
+      if (seq !== state.reqSeq) return;
+      if (knownProbe?.ip && knownProbe.ip === cachedFallback.ip) {
+        showedCache = true;
+        state.own = cachedFallback;
+        $("loading").hidden = true;
+        renderReport(cachedFallback);
+      } else if (knownProbe?.ip && knownProbe.ip !== cachedFallback.ip) {
+        clearOwnCache();
+        cachedFallback = null;
+        $("report").hidden = true;
+      }
+    } else {
+      $("loading").hidden = false;
+    }
   }
 
   try {
-    const report = target ? await fetchReport(target) : await detectOwnIp();
+    const report = target ? await fetchReport(target) : await detectOwnIp(knownProbe);
     if (seq !== state.reqSeq) return;
     if (!target) { state.own = report; writeOwnCache(report); exit.prefill(report); }
     $("loading").hidden = true;
@@ -2601,6 +2645,12 @@ async function query(target) {
     if (seq !== state.reqSeq || e.name === "AbortError") return;
     $("loading").hidden = true;
     if (showedCache) { toast(t("toast.cacheUsed")); return; }
+    if (cachedFallback && !target) {
+      state.own = cachedFallback;
+      renderReport(cachedFallback);
+      toast(t("toast.cacheUsed"));
+      return;
+    }
     $("report").hidden = true; $("error").hidden = false; $("error-msg").textContent = e.message || t("state.failed");
   }
 }
@@ -2879,7 +2929,10 @@ function showView(view) {
   requestAnimationFrame(moveGlider);
   updateSeoTitle(view, state.current);
   window.scrollTo({ top: 0, behavior: "auto" });
-  if (view === "query" && state.map) setTimeout(() => state.map.invalidateSize(), 180);
+  if (view === "query") {
+    requestAnimationFrame(observeReveals);
+    if (state.map) setTimeout(() => state.map.invalidateSize(), 180);
+  }
 }
 function route() {
   const h = location.hash; let view = "query"; let target = null;
@@ -2966,11 +3019,12 @@ $("search-form").addEventListener("submit", (e) => {
   if (location.hash === next) query(v);
   else location.hash = next;
 });
-$("detect-me").addEventListener("click", () => { $("search-input").value = ""; query(null); });
+$("detect-me").addEventListener("click", () => { $("search-input").value = ""; query(null, true); });
 document.querySelectorAll("[data-example]").forEach((b) => b.addEventListener("click", () => {
   const v = b.dataset.example;
-  location.hash = `#ip=${encodeURIComponent(v)}`;
-  query(v);
+  const next = `#ip=${encodeURIComponent(v)}`;
+  if (location.hash === next) query(v);
+  else location.hash = next;
 }));
 $("error-retry").addEventListener("click", () => query(state.lastQuery));
 $("copy-ip").addEventListener("click", () => state.current && copyText(state.current.ip, t("toast.copiedIp")));
