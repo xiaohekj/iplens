@@ -429,7 +429,7 @@ function asnNumber(asn: string | number | undefined): number {
 function riskLabel(fraud: number): { riskLevel: string; riskCode: string } {
   if (fraud <= 15) return { riskLevel: "极度纯净", riskCode: "minimal" };
   if (fraud <= 30) return { riskLevel: "低风险", riskCode: "low" };
-  if (fraud <= 50) return { riskLevel: "中性", riskCode: "medium" };
+  if (fraud <= 50) return { riskLevel: "轻度风险", riskCode: "medium" };
   if (fraud <= 70) return { riskLevel: "高风险", riskCode: "high" };
   return { riskLevel: "极度风险", riskCode: "critical" };
 }
@@ -843,14 +843,13 @@ function buildReport(
   const rirStatsCidr = typeof rirStatsEntry?.resource === "string" ? rirStatsEntry.resource : "";
   const ripeRirCC = normalizeCountryCode(ripeRir?.data?.rirs?.[0]?.country);
 
-  const registeredCC =
-    rirStatsCC ||
-    rdapInfo.countryCode ||
-    ripeRirCC ||
+  const prefixRegisteredCC = rirStatsCC || rdapInfo.countryCode || ripeRirCC || "";
+  const asnRegisteredCC =
     radarEntity?.countryCode ||
     normalizeCountryCode(ipapi?.asn?.country) ||
     normalizeCountryCode(ipguide?.network?.autonomous_system?.country) ||
     "";
+  const registeredCC = prefixRegisteredCC || asnRegisteredCC || "";
 
   const multiSource: GeoCompareItem[] = [];
   if (maxmindLoc && maxmindLoc.country) {
@@ -1101,9 +1100,13 @@ function buildReport(
 
   let isNative: boolean | null = null;
   let geoTypeLabel = "未知来源";
-  if (registeredCC && loc.cc) {
-    isNative = registeredCC === loc.cc;
-    geoTypeLabel = isNative ? `原生 IP (${registeredCC})` : `广播 IP (${registeredCC}→${loc.cc})`;
+  if (prefixRegisteredCC && loc.cc) {
+    isNative = prefixRegisteredCC === loc.cc;
+    geoTypeLabel = isNative ? `原生 IP (${prefixRegisteredCC})` : `广播 IP (${prefixRegisteredCC}→${loc.cc})`;
+  } else if (asnRegisteredCC && loc.cc && asnRegisteredCC === loc.cc) {
+    // When prefix RIR records time out, only treat same-country ASN entity as native; never misclassify cross-border ASN ownership as broadcast.
+    isNative = true;
+    geoTypeLabel = `原生 IP (${asnRegisteredCC})`;
   }
 
   const ipapiCompanyStr = typeof ipapi?.company === "string" ? ipapi.company : (ipapi?.company?.name || "");
@@ -1284,20 +1287,54 @@ function buildReport(
     compType === "education" ||
     compType === "government";
 
+  const proxyChecked = [
+    pcData ? "proxycheck.io" : "",
+    ip2locOk && "is_proxy" in ip2loc ? "IP2Location" : "",
+    ipqueryOk && ipquery.risk ? "ipquery.io" : "",
+    ipapiComOk ? "ip-api.com" : "",
+    freeipOk && "isProxy" in freeip ? "FreeIPAPI" : "",
+    ipapiHasRisk ? "ipapi.is" : "",
+    shodanOk ? "Shodan" : "",
+  ].filter(Boolean);
+
+  const isSingleHeuristicProxy =
+    proxyHits.length === 1 &&
+    (proxyHits[0] === "ip-api.com" || proxyHits[0] === "FreeIPAPI") &&
+    proxyChecked.length >= 3;
+  const strongProxyOrAnon = isTor || vpnHits.length > 0 || (proxyHits.length > 0 && !isSingleHeuristicProxy);
+  const strongResEvidence =
+    (compType === "isp" && asnType === "isp") ||
+    isKnownResAsn ||
+    (compType === "isp" && !asnType) ||
+    (!compType && asnType === "isp");
+  const isDualRoleIsp =
+    ((asnType === "isp" || isKnownResAsn) && isDc) ||
+    (compType === "isp" && (isDc || asnType === "hosting"));
+
   let type: Report["type"];
   if (isMobile && !isDc) {
     type = { code: "mobile", label: "移动网络", residential: false, confidence: "high", reason: "蜂窝移动运营商出口" };
-  } else if (isDc && (asnType === "isp" || isKnownResAsn) && !dcByKeyword) {
+  } else if (isDualRoleIsp && !dcByKeyword) {
     type = { code: "dual_isp", label: "双 ISP 托管", residential: false, confidence: "high", reason: "ISP 段但命中机房/托管特征" };
   } else if (isDc) {
     type = { code: "datacenter", label: "机房 IP", residential: false, confidence: dcByApi ? "high" : "medium", reason: dcByApi ? "命中数据中心/云主机库" : "组织或 rDNS 命中机房特征" };
   } else if (hasBizWords) {
     type = { code: "business", label: "商业宽带", residential: false, confidence: "medium", reason: "企业/高校/政企专线" };
-  } else if ((compType === "isp" || asnType === "isp" || isKnownResAsn || hasResWords) && !isProxy && !isVpn && !isTor) {
+  } else if ((compType === "isp" || asnType === "isp" || isKnownResAsn || hasResWords) && !strongProxyOrAnon) {
     if (isNative === false) {
-      type = { code: "dual_isp", label: "广播 ISP", residential: false, confidence: "medium", reason: "ISP 段但跨国广播" };
+      if (strongResEvidence) {
+        type = { code: "residential", label: "家宽 IP", residential: true, confidence: "medium", reason: "住宅运营商宽带但跨区广播（非原生）" };
+      } else {
+        type = { code: "dual_isp", label: "广播 ISP", residential: false, confidence: "medium", reason: "ISP 特征但跨区广播" };
+      }
     } else {
-      type = { code: "residential", label: "家宽 IP", residential: true, confidence: (compType === "isp" && asnType === "isp") || isKnownResAsn ? "high" : "medium", reason: "原生住宅运营商宽带" };
+      type = {
+        code: "residential",
+        label: "家宽 IP",
+        residential: true,
+        confidence: strongResEvidence ? "high" : "medium",
+        reason: isNative === true ? "原生住宅运营商宽带" : "住宅运营商宽带",
+      };
     }
   } else if (compType === "isp" || isKnownResAsn || hasResWords) {
     type = { code: "dual_isp", label: "住宅代理", residential: false, confidence: "medium", reason: "ISP 段但命中代理/VPN" };
@@ -1332,51 +1369,81 @@ function buildReport(
     reason: string,
     meta?: Record<string, string | number>,
   ) => {
-    if (delta !== 0) breakdown.push({ key, label, delta, reason, ...(meta ? { meta } : {}) });
+    if (delta > 0) breakdown.push({ key, label, delta, reason, ...(meta ? { meta } : {}) });
   };
 
-  if (type.code === "residential") addScore("baseline_residential", "网络基线", type.confidence === "high" ? 5 : 10, "原生住宅宽带基线");
-  else if (type.code === "mobile") addScore("baseline_mobile", "网络基线", 12, "移动蜂窝 CGNAT 共享出口");
+  if (type.code === "residential") {
+    addScore("baseline_residential", "网络基线", type.confidence === "high" ? 5 : 9, isNative === false ? "非原生住宅宽带基线" : "原生住宅宽带基线");
+  } else if (type.code === "mobile") addScore("baseline_mobile", "网络基线", 14, "移动蜂窝 CGNAT 共享出口");
   else if (type.code === "business") addScore("baseline_business", "网络基线", 18, "企业/机构商用网络");
   else if (type.code === "dual_isp") addScore("baseline_dual_isp", "网络基线", 26, "双 ISP / 广播托管段");
-  else if (type.code === "datacenter") addScore("baseline_datacenter", "网络基线", 28, "数据中心 / 云主机网络");
+  else if (type.code === "datacenter") addScore("baseline_datacenter", "网络基线", 33, "数据中心 / 云主机网络");
   else addScore("baseline_unknown", "网络基线", 22, "归属证据不足审慎基线");
 
   if (radar) {
-    if (radar.bot >= 90) addScore("radar_bot", "ASN 机器流量", 9, `Radar 实测该 ASN 机器流量占比 ${radar.bot}%`, { bot: radar.bot });
-    else if (radar.bot >= 75) addScore("radar_bot", "ASN 机器流量", 6, `Radar 实测该 ASN 机器流量占比 ${radar.bot}%`, { bot: radar.bot });
-    else if (radar.bot >= 55) addScore("radar_bot", "ASN 机器流量", 3, `Radar 实测该 ASN 机器流量占比 ${radar.bot}%`, { bot: radar.bot });
+    if (type.code === "residential") {
+      if (radar.bot >= 85) addScore("radar_bot", "ASN 机器流量", 8, `Radar 实测该 ASN 机器流量占比 ${radar.bot}%`, { bot: radar.bot });
+      else if (radar.bot >= 70) addScore("radar_bot", "ASN 机器流量", 4, `Radar 实测该 ASN 机器流量占比 ${radar.bot}%`, { bot: radar.bot });
+    } else if (radar.bot >= 20) {
+      const botDelta = Math.min(12, Math.max(1, Math.round((radar.bot - 15) * 0.16)));
+      addScore("radar_bot", "ASN 机器流量", botDelta, `Radar 实测该 ASN 机器流量占比 ${radar.bot}%`, { bot: radar.bot });
+    }
   }
 
-  if (isNative === false) addScore("broadcast", "跨区广播", 12, `注册国 ${registeredCC} ≠ 定位国 ${loc.cc}`, { reg: registeredCC, loc: loc.cc });
+  const broadcastRegCC = prefixRegisteredCC || registeredCC;
+  if (isNative === false) {
+    addScore("broadcast", "跨区广播", 14, `注册国 ${broadcastRegCC} ≠ 定位国 ${loc.cc}`, { reg: broadcastRegCC, loc: loc.cc });
+  }
   if (isTor) addScore("tor", "Tor 节点", 45, "命中 Tor 匿名出口");
-  if (isVpn) addScore("vpn", "VPN 出口", 20, "命中 VPN 节点库");
-  if (isProxy) addScore("proxy", "代理节点", 22, "命中公开代理或转发节点");
-  if (isDc && (isProxy || isVpn)) addScore("dc_proxy", "机房代理叠加", 8, "机房 + 代理/VPN 复合高危特征");
+  if (isVpn) {
+    const vpnDelta = vpnHits.length >= 2 ? 20 : 9;
+    addScore("vpn", "VPN 出口", vpnDelta, vpnHits.length >= 2 ? "多源命中 VPN 出口节点" : "单一情报源标记 VPN 出口");
+  }
+  if (isProxy) {
+    const proxyDelta = proxyHits.length >= 2 ? 22 : isSingleHeuristicProxy ? 7 : 12;
+    const proxyReason = proxyHits.length >= 2
+      ? "多源命中公开代理或转发节点"
+      : isSingleHeuristicProxy
+        ? "单一来源存在代理疑点（多数源未命中）"
+        : "单一情报源标记代理节点";
+    addScore("proxy", "代理节点", proxyDelta, proxyReason);
+  }
+  if (isDc && (isTor || (isProxy && isVpn) || proxyHits.length >= 2 || vpnHits.length >= 2)) {
+    addScore("dc_proxy", "机房代理叠加", 7, "机房 + 多源代理/VPN 复合高危特征");
+  }
 
+  const directAbuseHits = abuseHits.filter((h) => !h.startsWith("AbuseIPDB") && h !== "Crawler" && !h.startsWith("Shodan CVE"));
   if (abuseData && abuseDbConf > 0) {
-    const scaled = Math.min(35, Math.max(4, Math.round(abuseDbConf * 0.35)));
+    const scaled = abuseDbConf >= 20
+      ? Math.min(38, Math.max(16, Math.round(10 + abuseDbConf * 0.3)))
+      : Math.max(5, Math.round(abuseDbConf * 0.6));
     addScore("abuseipdb", "AbuseIPDB 举报", scaled, `近 90 天被举报 ${abuseDbReports} 次（置信度 ${abuseDbConf}%）`, { reports: abuseDbReports, conf: abuseDbConf });
-  } else if (isAbuser) {
-    const abuseDelta = abuserRatio >= 0.1 || ipqThreat >= 60 || shodanCompromised || sfsConf >= 50 ? 24 : 16;
-    addScore("abuse_generic", "滥用与威胁", abuseDelta, "命中滥用或威胁情报源");
+    if (directAbuseHits.length > 0) {
+      const extraAbuse = abuserRatio >= 0.1 || ipqThreat >= 60 || shodanCompromised || sfsConf >= 50 ? 12 : 8;
+      addScore("abuse_generic", "滥用与威胁", extraAbuse, "多源交叉命中滥用或威胁情报");
+    }
+  } else {
+    if (abuseData && abuseDbReports > 0) {
+      const histDelta = abuseDbReports >= 5 ? 4 : 2;
+      addScore("abuse_history", "历史举报记录", histDelta, `AbuseIPDB 近 90 天存在 ${abuseDbReports} 次历史举报`, { reports: abuseDbReports });
+    }
+    if (directAbuseHits.length > 0) {
+      const abuseDelta = abuserRatio >= 0.1 || ipqThreat >= 60 || shodanCompromised || sfsConf >= 50 ? 24 : 16;
+      addScore("abuse_generic", "滥用与威胁", abuseDelta, "命中滥用或威胁情报源");
+    }
   }
 
   if (isCrawler) addScore("crawler", "爬虫来源", 10, "命中商业/抓取爬虫库");
   if (exposure.vulnsCount >= 3) addScore("vulns", "暴露面漏洞", 6, `Shodan 发现 ${exposure.vulnsCount} 个已知漏洞特征`, { count: exposure.vulnsCount });
 
+  const riskPorts = exposure.ports.filter((p) => p !== 53 && p !== 80 && p !== 443);
+  if (type.code !== "residential" && riskPorts.length > 0) {
+    const portDelta = riskPorts.length >= 3 ? 4 : 2;
+    addScore("open_ports", "管理/代理端口暴露", portDelta, `开放端口 ${riskPorts.slice(0, 4).join(", ")}`, { ports: riskPorts.slice(0, 4).join(", ") });
+  }
+
   const fraud = Math.max(0, Math.min(100, Math.round(breakdown.reduce((s, x) => s + x.delta, 0))));
   const trust = 100 - fraud;
-
-  const proxyChecked = [
-    pcData ? "proxycheck.io" : "",
-    ip2locOk && "is_proxy" in ip2loc ? "IP2Location" : "",
-    ipqueryOk && ipquery.risk ? "ipquery.io" : "",
-    ipapiComOk ? "ip-api.com" : "",
-    freeipOk && "isProxy" in freeip ? "FreeIPAPI" : "",
-    ipapiHasRisk ? "ipapi.is" : "",
-    shodanOk ? "Shodan" : "",
-  ].filter(Boolean);
 
   const vpnChecked = [
     pcData ? "proxycheck.io" : "",
@@ -1894,62 +1961,169 @@ async function lookupGeoAddress(
 }
 
 /* ================= 5 层免费多语言 AI 自动容灾引擎 ================= */
+type IpProfileCategory =
+  | "native_residential_clean"
+  | "native_residential_risky"
+  | "broadcast_residential"
+  | "dual_isp"
+  | "datacenter_clean"
+  | "datacenter_risky"
+  | "mobile"
+  | "business";
+
+function classifyIpProfile(report: Report): IpProfileCategory {
+  const fraud = report.scores.fraud;
+  const hasAnon = report.signals.some((s) => (s.key === "tor" || s.key === "vpn" || s.key === "proxy") && s.detected);
+  const hasAbuse = report.signals.some((s) => s.key === "abuse" && s.detected) || (report.abuse?.confidence ?? 0) >= 20;
+  const isBroadcast = report.location.isNative === false;
+  const reports = report.abuse?.reports ?? 0;
+
+  if (report.type.code === "residential") {
+    if (isBroadcast) return "broadcast_residential";
+    if (hasAbuse || fraud > 20 || reports >= 3) return "native_residential_risky";
+    return "native_residential_clean";
+  }
+  if (report.type.code === "dual_isp") return "dual_isp";
+  if (report.type.code === "mobile") return "mobile";
+  if (report.type.code === "business") return "business";
+  if (report.type.code === "datacenter") {
+    return !hasAnon && !hasAbuse && !isBroadcast && fraud <= 42 ? "datacenter_clean" : "datacenter_risky";
+  }
+  return hasAnon || hasAbuse || isBroadcast || fraud > 42 ? "datacenter_risky" : "business";
+}
+
 function buildRuleBasedAnalysis(report: Report, clientEnv: any, lang: Lang): string {
   const fraud = report.scores.fraud;
+  const trust = report.scores.trust;
   const bot = report.humanRatio.bot;
-  const isRes = report.type.residential;
-  const isNative = report.location.isNative !== false;
-  const cleanLowRes = isRes && fraud <= 20;
+  const profile = classifyIpProfile(report);
+  const asnLabel = report.network.asn || report.company.name || "ISP";
+  const regCC = report.location.registeredCountryCode || "—";
+  const locCC = report.location.countryCode || "—";
+  const isBroadcast = report.location.isNative === false;
+  const routeTagEn = isBroadcast ? `${regCC}→${locCC}` : (report.location.isNative === true ? `native ${locCC}` : locCC);
+  const routeTagZh = isBroadcast ? `${regCC}→${locCC}` : (report.location.isNative === true ? `原生 ${locCC}` : locCC);
+  const routeTagJa = isBroadcast ? `${regCC}→${locCC}` : (report.location.isNative === true ? `ネイティブ ${locCC}` : locCC);
+  const reports = report.abuse?.reports ?? 0;
+  const conf = report.abuse?.confidence ?? 0;
+  const riskPorts = report.exposure.ports.filter((p) => p !== 53 && p !== 80 && p !== 443);
+  const hitNames = report.signals.filter((s) => s.detected).map((s) => s.key);
   const envWarn = clientEnv && Array.isArray(clientEnv.warnings) ? clientEnv.warnings : [];
 
   if (lang === "en") {
-    const verdict = cleanLowRes
-      ? (isNative ? "Clean native residential IP with minimal risk" : "Low-risk broadcast residential IP, stable for regular use")
-      : fraud <= 35 ? "Low-to-moderate risk IP suitable for standard access"
-      : fraud <= 55 ? `Neutral risk ${report.type.code} IP (macro ASN bot baseline ${bot}%)`
-      : `High-risk ${report.type.code} IP (${fraud}% risk score)`;
-    const aiPlat = cleanLowRes ? "Highly recommended — minimal verification friction"
-      : fraud <= 45 && (isRes || bot < 75) ? "Usable — occasional CAPTCHA or rate checks"
-      : "Not recommended — datacenter or high-risk signals trigger CAPTCHA or blocks";
-    const biz = cleanLowRes && isNative ? "Recommended — suitable for social accounts, e-commerce, and payments"
-      : cleanLowRes ? "Usable — align local timezone/language for cross-border accounts"
-      : fraud <= 38 && isRes ? "Browsing & light registration only"
-      : "Not recommended — avoid account sign-ups, ads, or payment checkout";
-    const tip = envWarn.length
-      ? (cleanLowRes
-        ? `IP itself is clean; align local environment (${envWarn.join(", ")}).`
-        : `Fix local environment mismatches (${envWarn.join(", ")}) and switch to a clean native residential IP for sensitive workflows.`)
-      : fraud > 35 || !isRes ? "Switch to a clean native residential IP for sensitive workflows."
-      : "Environment looks clean; keep current network and timezone settings.";
+    const map: Record<IpProfileCategory, [string, string, string, string]> = {
+      native_residential_clean: [
+        `Clean native residential IP (${asnLabel}, ${locCC}); risk ${fraud}% / purity ${trust}/100 (ASN 7d bot avg ${bot}% is macro carrier traffic, not single-IP behavior).`,
+        "Highly recommended — matches real consumer broadband with minimal Cloudflare, ChatGPT, or Claude verification friction.",
+        "Recommended — well suited for social account warm-up, regional e-commerce stores, and payment checkout.",
+        envWarn.length ? `IP is clean; fix local browser mismatches (${envWarn.join(", ")}) to stay consistent.` : "Clean network baseline; keep system timezone and language aligned with exit country.",
+      ],
+      native_residential_risky: [
+        `Polluted native residential IP (${asnLabel}, ${locCC}); risk ${fraud}% / purity ${trust}/100 due to abuse history (${reports} reports, ${conf}% conf${hitNames.length ? `; signals: ${hitNames.join(", ")}` : ""}).`,
+        "Use with caution — residential ASN helps, but existing abuse flags can trigger Cloudflare challenges or secondary login checks.",
+        "Not ideal for high-value sign-ups or payments; limit to low-sensitivity browsing unless replaced with a cleaner IP.",
+        envWarn.length ? `Also resolve local warnings (${envWarn.join(", ")}) and rotate to a clean unflagged residential IP for sensitive tasks.` : "Rotate to a clean residential IP without AbuseIPDB/spam flags before creating key accounts.",
+      ],
+      broadcast_residential: [
+        `Non-native broadcast residential IP (${regCC} prefix → ${locCC} geo, ${asnLabel}); risk ${fraud}% / purity ${trust}/100.`,
+        "Usable — recognized as residential carrier traffic for standard ChatGPT/Claude chats, though strict region-locked services may verify IP registration.",
+        "Caution for local e-commerce/payments — RIR registration mismatch may trigger billing or KYC country reviews.",
+        envWarn.length ? `Fix local mismatches (${envWarn.join(", ")}) and switch to true ${locCC} native residential if strict geo verification applies.` : `Use a true native ${locCC} residential IP for local banking or merchant accounts.`,
+      ],
+      dual_isp: [
+        `Dual-ISP / residential-proxy or hosted ISP range (${report.type.reason}, ${asnLabel}); risk ${fraud}% / purity ${trust}/100.`,
+        `Mixed reputation — higher CAPTCHA risk on ChatGPT/Claude (${hitNames.length ? `flagged: ${hitNames.join(", ")}` : `ASN bot ${bot}%`}).`,
+        "Not recommended for social account creation, ad accounts, or payment gateways due to hybrid ISP/hosting detection.",
+        envWarn.length ? `Resolve client warnings (${envWarn.join(", ")}) and migrate sensitive accounts to pure native residential.` : "Suitable for general research/scraping; use native home broadband for core accounts.",
+      ],
+      datacenter_clean: [
+        `Native low-noise datacenter IP (${asnLabel}, ${locCC}); risk ${fraud}% / purity ${trust}/100 (ASN bot ${bot}%, ${reports} AbuseIPDB reports${riskPorts.length ? `, open ports: ${riskPorts.slice(0, 3).join("/")}` : ""}).`,
+        "Light use / CAPTCHA expected — clean IP reputation avoids instant blocks, but hosting ASN lowers trust on strict AI anti-bot checks.",
+        "Not recommended — non-residential cloud signature triggers risk controls on TikTok, Amazon, Stripe, or PayPal.",
+        envWarn.length ? `Address browser warnings (${envWarn.join(", ")}) and reserve this VPS node for dev/API traffic.` : "Best suited for server workloads, APIs, or general browsing; switch to native residential for accounts.",
+      ],
+      datacenter_risky: [
+        `High-risk / proxy-flagged or broadcast datacenter IP (${routeTagEn}, ${asnLabel}); risk ${fraud}% / purity ${trust}/100 (${hitNames.length ? `hits: ${hitNames.join(", ")}` : `ASN bot ${bot}%`}${reports ? `, ${reports} reports` : ""}).`,
+        "Not recommended — datacenter + anonymizer/broadcast signals frequently cause Cloudflare blocks, Arkose loops, or AI model throttling.",
+        "Avoid strictly — high probability of instant rejection or account suspension on e-commerce, social, and payment platforms.",
+        envWarn.length ? `Multiple risks detected (${hitNames.join(", ") || "hosting"}) plus client mismatches (${envWarn.join(", ")}); switch to clean residential.` : "Do not use for accounts or payments; switch to a clean native residential IP.",
+      ],
+      mobile: [
+        `Cellular mobile CGNAT exit (${asnLabel}, ${locCC}); risk ${fraud}% / purity ${trust}/100.`,
+        "Usable — mobile carrier ASN generally clears AI checks cleanly, with occasional CAPTCHAs from shared CGNAT concurrency.",
+        "Good for mobile social apps and light commerce; use fixed native residential for high-value long-term stores.",
+        envWarn.length ? `Align local fingerprint (${envWarn.join(", ")}) with mobile region settings.` : "Keep device timezone and language matched to carrier region.",
+      ],
+      business: [
+        `Enterprise / institutional commercial line (${asnLabel}, ${locCC}); risk ${fraud}% / purity ${trust}/100.`,
+        "Recommended for office/work use — stable corporate ASN passes standard ChatGPT/Claude access reliably.",
+        "Caution on consumer social sign-ups — commercial lines differ from home ISPs on consumer anti-fraud models.",
+        envWarn.length ? `Check local warnings (${envWarn.join(", ")}); use consumer home broadband if onboarding retail social accounts.` : "Ideal for business workflows; pair with residential IP only if targeting consumer social growth.",
+      ],
+    };
+    const [verdict, aiPlat, biz, tip] = map[profile];
     return [
-      `- **Verdict**: ${verdict} (Risk ${fraud}%, Purity ${report.scores.trust}/100)`,
-      `- **AI Platforms**: ${aiPlat}`,
+      `- **Verdict**: ${verdict}`,
+      `- **AI Platforms (ChatGPT/Claude)**: ${aiPlat}`,
       `- **Commerce / Social / Payments**: ${biz}`,
       `- **Recommendation**: ${tip}`,
     ].join("\n");
   }
 
   if (lang === "zh-TW") {
-    const verdict = cleanLowRes
-      ? (isNative ? "純淨原生家寬 IP，風控風險極低" : "低風險廣播家寬 IP，日常存取穩定")
-      : fraud <= 35 ? "低風險網路節點，常規存取穩定"
-      : fraud <= 55 ? `中性風險 ${report.type.label}（所屬 ASN 整網機器流量均值 ${bot}%）`
-      : `高風險 ${report.type.label}（風險係數 ${fraud}%）`;
-    const aiPlat = cleanLowRes ? "高度推薦，觸發驗證機率極低"
-      : fraud <= 45 && (isRes || bot < 75) ? "基本可用，偶發人機驗證或降速"
-      : "不推薦，機房或高風險特徵易觸發降智與攔截";
-    const biz = cleanLowRes && isNative ? "推薦，適合社群養號、跨境電商與支付場景"
-      : cleanLowRes ? "基本可用，建議保持本機時區與出口地區一致"
-      : fraud <= 38 && isRes ? "僅建議日常瀏覽，謹慎用於敏感註冊"
-      : "不推薦，請勿用於註冊、廣告投放或支付結帳";
-    const tip = envWarn.length
-      ? (cleanLowRes
-        ? `IP 本身純淨，建議對齊本機環境（${envWarn.join("、")}）。`
-        : `建議處理本機環境偏差（${envWarn.join("、")}），敏感業務請切換原生家寬 IP。`)
-      : fraud > 35 || !isRes ? "敏感業務建議切換至乾淨的原生住宅家寬 IP。"
-      : "目前環境良好，保持本機時區與出口地區一致即可。";
+    const map: Record<IpProfileCategory, [string, string, string, string]> = {
+      native_residential_clean: [
+        `純淨原生家寬 IP（${asnLabel} · ${locCC}，風險 ${fraud}% / 純淨分 ${trust}）；所屬 ASN 機器流量均值 ${bot}% 屬大網宏觀統計，非單 IP 異常。`,
+        "高度推薦 — 具備真實家庭寬頻信譽，存取 ChatGPT / Claude / Gemini 幾乎無驗證阻力。",
+        "推薦使用 — 適合社群養號、跨境電商店鋪登入及合規支付結帳等高敏業務。",
+        envWarn.length ? `IP 本身純淨，請對齊本機環境差異（${envWarn.join("、")}）。` : "目前網路基線極佳，保持時區、語言與出口地區一致即可。",
+      ],
+      native_residential_risky: [
+        `原生家寬 IP 但存在污染記錄（${asnLabel} · ${locCC}，風險 ${fraud}% / 純淨分 ${trust}；近90天舉報 ${reports} 次 / 置信度 ${conf}%${hitNames.length ? `，命中：${hitNames.join("、")}` : ""}）。`,
+        "謹慎可用 — 雖屬原生家寬，但歷史濫用權重仍可能觸發 Cloudflare 驗證或二次登入檢查。",
+        "不建議用於新起號或大額支付，僅限低敏瀏覽，敏感業務建議更換無舉報家寬。",
+        envWarn.length ? `請一併修正本機偏差（${envWarn.join("、")}），敏感帳號建議改用未受污染的家寬。` : "敏感業務建議重新撥號換取無舉報記錄的新鮮家寬段。",
+      ],
+      broadcast_residential: [
+        `非原生 / 廣播家寬 IP（前綴註冊於 ${regCC} → 定位於 ${locCC}，${asnLabel}，風險 ${fraud}% / 純淨分 ${trust}）。`,
+        "基本可用 — 住宅電信屬性使一般 ChatGPT / Claude 對話多可通行，但嚴格校驗註冊地的 AI 服務偶發鎖區或驗證。",
+        "跨境與支付需謹慎 — RIR 註冊國與定位國不一致，易引發 PayPal、Stripe 或本土電商審核復查。",
+        envWarn.length ? `請處理本機環境差異（${envWarn.join("、")}）；對原生歸屬要求嚴格的業務請換 ${locCC} 原生家寬。` : `日常存取穩定；註冊本土高敏金融或電商號建議改用真實 ${locCC} 原生家寬。`,
+      ],
+      dual_isp: [
+        `雙 ISP / 住宅代理或混合託管段（${report.type.reason} · ${asnLabel}，風險 ${fraud}% / 純淨分 ${trust}）。`,
+        `易遇風控 — 混合託管或代理特徵（${hitNames.length ? `命中 ${hitNames.join("、")}` : `ASN 機器流量 ${bot}%`}）常在 AI 平台觸發人機驗證。`,
+        "不推薦用於養號、廣告戶或支付結帳，極易被電商與社群風控庫標記。",
+        envWarn.length ? `修正本機環境問題（${envWarn.join("、")}），核心業務請遷移至無代理命中的純淨原生家寬。` : "適合一般資料檢索或測試，重要帳號務必切換純淨原生家寬。",
+      ],
+      datacenter_clean: [
+        `原生普通機房 IP（${asnLabel} · ${locCC}，風險 ${fraud}% / 純淨分 ${trust}；ASN 機器流量 ${bot}%、歷史舉報 ${reports} 次${riskPorts.length ? `、開放管理/服務端口 ${riskPorts.slice(0, 3).join("/")}` : ""}）。`,
+        "輕量可用但易降智/驗證 — 暫無惡意黑名單實錘，但公有雲/機房屬性存取 ChatGPT / Claude 仍易觸發驗證或配額收緊。",
+        "不推薦用於跨境起號或支付 — 數據中心網段顯著偏離個人消費寬頻畫像。",
+        envWarn.length ? `請修正本機偏差（${envWarn.join("、")}）；該節點更適合研發/API，敏感業務請換家寬。` : "適合開發測試、API 呼叫與普通瀏覽；社群起號或收付款請更換原生家寬 IP。",
+      ],
+      datacenter_risky: [
+        `高風險 / 代理或廣播機房 IP（${routeTagZh} · ${asnLabel}，風險 ${fraud}% / 純淨分 ${trust}；${hitNames.length ? `命中：${hitNames.join("、")}` : `ASN 機器流量 ${bot}%`}${reports ? `、舉報 ${reports} 次` : ""}）。`,
+        "不推薦 — 機房疊加代理/VPN 或高濫用特徵極易遭 Cloudflare 與 AI 平台直接攔截或降智。",
+        "嚴禁使用 — 用於跨境店鋪、社群註冊與支付將大機率觸發風控拒付或關聯封號。",
+        envWarn.length ? `當前風險高且存在本機偏差（${envWarn.join("、")}），請勿用於任何真實帳號，立即切換原生家寬。` : "僅限非敏感實驗查詢，重要帳號與支付請立即更換純淨原生家寬 IP。",
+      ],
+      mobile: [
+        `蜂窩行動網路 IP（${asnLabel} · ${locCC}，風險 ${fraud}% / 純淨分 ${trust}，屬電信 CGNAT 共享出口）。`,
+        "可用 — 行動營運商信譽優於一般機房，日常存取 ChatGPT / Claude 較穩，偶發驗證屬共享出口併發所致。",
+        "適合行動端社群瀏覽與輕量營運；大額支付與核心長週期店鋪仍建議搭配固定原生家寬。",
+        envWarn.length ? `請對齊本機指紋與行動環境差異（${envWarn.join("、")}）。` : "建議保持裝置時區語言一致，避免短時間頻繁跨越不同省份或國家。",
+      ],
+      business: [
+        `企業 / 高校商用專線 IP（${asnLabel} · ${locCC}，風險 ${fraud}% / 純淨分 ${trust}）。`,
+        "辦公推薦 — 商企專線低噪穩定，存取 ChatGPT / Claude 與開發服務表現可靠。",
+        "謹慎用於 C 端社群起號 — 商業固定段落特徵有別於家庭動態寬頻，支付過濾視商家規則而定。",
+        envWarn.length ? `請處理本機環境差異（${envWarn.join("、")}），日常辦公可繼續沿用。` : "日常開發與企業合規存取建議保留；若做 C 端消費社群孵化建議改用原生家寬。",
+      ],
+    };
+    const [verdict, aiPlat, biz, tip] = map[profile];
     return [
-      `- **綜合定性**：${verdict}（風險 ${fraud}% / 純淨分 ${report.scores.trust}）`,
+      `- **綜合定性**：${verdict}`,
       `- **AI 平台 (ChatGPT/Claude)**：${aiPlat}`,
       `- **跨境 / 社群 / 支付**：${biz}`,
       `- **實操建議**：${tip}`,
@@ -1957,53 +2131,118 @@ function buildRuleBasedAnalysis(report: Report, clientEnv: any, lang: Lang): str
   }
 
   if (lang === "ja") {
-    const verdict = cleanLowRes
-      ? (isNative ? "クリーンなネイティブ住宅IP（低リスク）" : "低リスクのブロードキャスト住宅IP（通常利用向き）")
-      : fraud <= 35 ? "標準利用に適した低〜中リスクIP"
-      : fraud <= 55 ? `中立リスクIP（ASN全体のBot平均 ${bot}%）`
-      : `高リスクIP（リスク係数 ${fraud}%）`;
-    const aiPlat = cleanLowRes ? "強く推奨 — 認証要求の発生率は極めて低い"
-      : fraud <= 45 && (isRes || bot < 75) ? "利用可能 — 時々CAPTCHAが表示される可能性あり"
-      : "非推奨 — 制限やブロックの可能性が高い";
-    const biz = cleanLowRes && isNative ? "推奨 — SNS運用・EC・決済用途に適しています"
-      : cleanLowRes ? "利用可能 — 端末のタイムゾーンを一致させてご利用ください"
-      : fraud <= 38 && isRes ? "通常閲覧向け、新規登録は慎重に"
-      : "非推奨 — アカウント登録や決済には使用しないでください";
-    const tip = envWarn.length
-      ? (cleanLowRes
-        ? `IP自体は良好です。ローカル環境の差異（${envWarn.join("、")}）を調整してください。`
-        : `ローカル環境の差異（${envWarn.join("、")}）を修正し、重要業務はクリーンな住宅IPを推奨します。`)
-      : fraud > 35 || !isRes ? "重要な業務にはクリーンな住宅IPへの切り替えを推奨します。"
-      : "環境は良好です。現在のネットワーク設定を維持してください。";
+    const map: Record<IpProfileCategory, [string, string, string, string]> = {
+      native_residential_clean: [
+        `クリーンなネイティブ住宅IP（${asnLabel}・${locCC}、リスク ${fraud}% / 純度 ${trust}/100）。ASN全体のBot比率 ${bot}% はキャリア網平均であり単一IPの異常ではありません。`,
+        "強く推奨 — 実利用の住宅回線評価により ChatGPT / Claude での認証要求は極めて低頻度です。",
+        "推奨 — SNS運用・越境ECログイン・オンライン決済まで幅広く適しています。",
+        envWarn.length ? `IP自体は良好です。ローカル環境の差異（${envWarn.join("・")}）を整えてください。` : "環境は良好です。端末のタイムゾーンと言語を接続国と一致させて維持してください。",
+      ],
+      native_residential_risky: [
+        `汚染履歴のあるネイティブ住宅IP（${asnLabel}・${locCC}、リスク ${fraud}% / 純度 ${trust}/100；報告 ${reports}件 / 信頼度 ${conf}%）。`,
+        "注意が必要 — 住宅回線ではあるものの、過去の不正報告により検証要求が出やすい状態です。",
+        "新規アカウント作成や決済には不向きです。低リスクな閲覧に留めてください。",
+        envWarn.length ? `端末の差異（${envWarn.join("・")}）も解消し、重要用途は未汚染の住宅IPへ変更を推奨します。` : "重要アカウント用途では再接続等で別のクリーンな住宅IPに切り替えてください。",
+      ],
+      broadcast_residential: [
+        `非ネイティブ（ブロードキャスト）住宅IP（登録国 ${regCC} → 利用地域 ${locCC}・${asnLabel}、リスク ${fraud}% / 純度 ${trust}/100）。`,
+        "利用可能 — 通常の AI チャットは概ね利用できますが、RIR登録国を厳格に見るサービスでは認証が出ることがあります。",
+        "決済・地域限定ECでは注意 — IP登録国と利用地の不一致が審査トリガーとなる場合があります。",
+        envWarn.length ? `ローカル差異（${envWarn.join("・")}）を修正し、厳格な決済には ${locCC} ネイティブ住宅IPをご利用ください。` : `厳格な本人確認や決済には ${locCC} のネイティブ住宅回線への変更を推奨します。`,
+      ],
+      dual_isp: [
+        `デュアルISP / 住宅プロキシ混在帯（${report.type.reason}・${asnLabel}、リスク ${fraud}% / 純度 ${trust}/100）。`,
+        "認証頻発の可能性 — 商用・プロキシ混在特性により ChatGPT/Claude で制限対象になりやすい傾向です。",
+        "非推奨 — SNS育成・広告アカウント・決済用途での利用は控えてください。",
+        envWarn.length ? `端末設定の差異（${envWarn.join("・")}）を直し、重要業務は純粋なネイティブ住宅IPへ移行してください。` : "情報収集用途に留め、重要アカウントには通常の住宅回線を使用してください。",
+      ],
+      datacenter_clean: [
+        `ネイティブ標準データセンターIP（${asnLabel}・${locCC}、リスク ${fraud}% / 純度 ${trust}/100；ASN Bot ${bot}%・報告 ${reports}件）。`,
+        "軽量利用向け — 重大なブラックリストはありませんが、クラウド帯特有の厳格チェックでCAPTCHAや制限がかかりやすいです。",
+        "非推奨 — 個人向けSNS新規登録・EC運用・決済チェックアウトでは不正検知されやすい帯域です。",
+        envWarn.length ? `端末環境（${envWarn.join("・")}）を調整しつつ、サーバー/API用途に限定することを推奨します。` : "開発・API利用向きです。一般ユーザー向けのアカウント運用には住宅IPをご利用ください。",
+      ],
+      datacenter_risky: [
+        `高リスク / プロキシ・ブロードキャスト該当データセンターIP（${routeTagJa}、リスク ${fraud}% / 純度 ${trust}/100${hitNames.length ? `・検知: ${hitNames.join(",")}` : ""}）。`,
+        "非推奨 — 匿名化・高リスク帯のため Cloudflare や OpenAI / Anthropic で即座にブロック・制限される確率が高いです。",
+        "使用禁止 — 決済エラーやアカウント凍結の原因となるため使用しないでください。",
+        envWarn.length ? `端末差異（${envWarn.join("・")}）も含め高リスク状態のため、重要用途は必ずクリーンな住宅IPへ切り替えてください。` : "調査用途に留め、アカウントや決済では即座にクリーンなネイティブ住宅IPへ変更してください。",
+      ],
+      mobile: [
+        `モバイルキャリア CGNAT 回線（${asnLabel}・${locCC}、リスク ${fraud}% / 純度 ${trust}/100）。`,
+        "利用可能 — 携帯回線の評価は高く安定していますが、共有出口のため混雑時にCAPTCHAが出ることがあります。",
+        "モバイルSNSや軽量ECに適しています。高額決済や主軸ショップには固定住宅IPが安心です。",
+        envWarn.length ? `ローカル環境のズレ（${envWarn.join("・")}）をキャリア国に合わせて調整してください。` : "端末の時刻・言語設定を接続地域と一致させてご利用ください。",
+      ],
+      business: [
+        `法人・教育機関向け商用回線（${asnLabel}・${locCC}、リスク ${fraud}% / 純度 ${trust}/100）。`,
+        "業務利用に推奨 — 安定した企業帯域により標準的なAIチャットやAPI利用は快適です。",
+        "個人SNSの新規育成には注意 — 家庭回線とは特性が異なるため、一部一般向けサービスで識別される場合があります。",
+        envWarn.length ? `端末差異（${envWarn.join("・")}）のみ確認すれば、法人業務用途ではそのまま利用可能です。` : "ビジネス用途には適しています。個人向けSNS用途では住宅回線をご検討ください。",
+      ],
+    };
+    const [verdict, aiPlat, biz, tip] = map[profile];
     return [
-      `- **総合判定**：${verdict}（リスク ${fraud}% / 純度 ${report.scores.trust}/100）`,
+      `- **総合判定**：${verdict}`,
       `- **AI プラットフォーム**：${aiPlat}`,
       `- **EC / SNS / 決済**：${biz}`,
       `- **推奨アクション**：${tip}`,
     ].join("\n");
   }
 
-  const verdict = cleanLowRes
-    ? (isNative ? "纯净原生家宽 IP，风控风险极低" : "低风险广播家宽 IP，日常访问稳定")
-    : fraud <= 35 ? "低风险网络节点，常规访问稳定"
-    : fraud <= 55 ? `中性风险 ${report.type.label}（所属 ASN 整网机器流量均值 ${bot}%）`
-    : `高风险 ${report.type.label}（风险系数 ${fraud}%）`;
-  const aiPlat = cleanLowRes ? "高度推荐，触发验证概率极低"
-    : fraud <= 45 && (isRes || bot < 75) ? "基本可用，偶发人机校验或限速"
-    : "不推荐，机房或高风险特征易触发降智、验证或拦截";
-  const biz = cleanLowRes && isNative ? "推荐，适合社媒养号、跨境店铺与常规支付场景"
-    : cleanLowRes ? "基本可用，建议保持本机时区与出口地区一致"
-    : fraud <= 38 && isRes ? "仅建议日常浏览，谨慎用于敏感注册"
-    : "不推荐，请勿用于账号注册、起号或支付结账";
-  const tip = envWarn.length
-    ? (cleanLowRes
-      ? `IP 本身纯净度良好，建议修正本机环境偏差（${envWarn.join("、")}）。`
-      : `建议处理本机环境偏差（${envWarn.join("、")}），敏感业务请换原生家宽 IP。`)
-    : fraud > 35 || !isRes ? "普通浏览可用；涉及注册或支付建议更换干净的原生家宽 IP。"
-    : "当前网络纯净度良好，保持出口地区与本地时区一致即可。";
-
+  const map: Record<IpProfileCategory, [string, string, string, string]> = {
+    native_residential_clean: [
+      `纯净原生家宽 IP（${asnLabel} · ${locCC}，风险 ${fraud}% / 纯净分 ${trust}）；ASN 机器流量 ${bot}% 为整网 7 天均值，不代表当前单 IP 异常。`,
+      "高度推荐 — 具备真实消费级宽带信誉，使用 ChatGPT / Claude / Gemini 极少触发验证码或降智。",
+      "推荐使用 — 贴合本土家庭环境，适合 TikTok/社媒养号、跨境店铺后台登录及合规支付结账。",
+      envWarn.length ? `IP 本身质量极佳，建议修正本机环境偏差（${envWarn.join("、")}）以防浏览器指纹关联。` : "当前出口与纯洁度状态极佳，保持本机时区、语言与出口国一致即可长期使用。",
+    ],
+    native_residential_risky: [
+      `原生家宽但存在污染记录（${asnLabel} · ${locCC}，风险 ${fraud}% / 纯净分 ${trust}；近 90 天举报 ${reports} 次 / 置信度 ${conf}%${hitNames.length ? `，命中：${hitNames.join("、")}` : ""}）。`,
+      "谨慎可用 — 原生家宽有一定容错，但已有滥用记录在高峰期易触发 Cloudflare 或二次人机校验。",
+      "不建议高价值操作 — 可用于普通信息检索，涉及新号冷启动、广告户或大额支付建议先行更换纯净家宽。",
+      envWarn.length ? `请同步处理本机偏差（${envWarn.join("、")}）；核心业务建议重新拨号获取无举报记录的家宽段。` : "如条件允许建议重拨换取 0 举报/0 威胁命中的干净原生家宽段。",
+    ],
+    broadcast_residential: [
+      `非原生 / 广播家宽 IP（IP 段注册国 ${regCC} → 物理定位 ${locCC}，${asnLabel}，风险 ${fraud}% / 纯净分 ${trust}）。`,
+      "基本可用 — 住宅运营商性质使常规 ChatGPT / Claude 对话顺畅，少数强校验 RIR 属地的 AI 服务偶发锁区提示。",
+      "跨境 / 支付慎用 — 跨区广播导致 RIR 账单地与物理地偏差，易在 PayPal、Stripe 或本土电商触发风控核验。",
+      envWarn.length ? `建议对齐本机环境（${envWarn.join("、")}）；若注册本土高敏金融或店铺号，请切换真正原生 ${locCC} 家宽。` : `普通浏览稳定；若做精准本土合规起号或收款，建议换成 ${locCC} 原生家宽。`,
+    ],
+    dual_isp: [
+      `双 ISP / 混合托管或住宅代理段（${report.type.reason} · ${asnLabel}，风险 ${fraud}% / 纯净分 ${trust}）。`,
+      `风控偏高 — 兼有托管或代理命中特征（${hitNames.length ? `命中 ${hitNames.join("、")}` : `ASN 机器流量 ${bot}%`}），访问 AI 平台易触发验证或降智。`,
+      "不推荐 — 双 ISP/住宅代理是跨境店铺、社媒矩阵与支付网关重点拦截对象，不宜用于起号或结账。",
+      envWarn.length ? `请先修正本机警告（${envWarn.join("、")}），敏感账号务必切换无代理特征的纯原生家宽。` : "仅适合辅助查询或非高敏测试；核心社媒与支付账号请更换原生家宽。",
+    ],
+    datacenter_clean: [
+      `原生普通机房 IP（${asnLabel} · ${locCC}，风险 ${fraud}% / 纯净分 ${trust}；ASN 机器流量 ${bot}%、历史举报 ${reports} 次${riskPorts.length ? `、暴露端口 ${riskPorts.slice(0, 3).join("/")}` : ""}）。`,
+      "仅限轻量使用 — 暂无公开代理或高危黑名单，但机房 ASN 属性容易在 ChatGPT / Claude 触发验证码或模型降智。",
+      "不推荐 — 非家宽云主机网段直接偏离消费宽带画像，不适合 TikTok 养号、跨境主店或支付结算。",
+      envWarn.length ? `请修正本机环境警告（${envWarn.join("、")}）；建议该 IP 仅作开发调试与常规访问，重要账号请换家宽。` : "适合技术开发、API 部署与轻量查阅；涉及 AI 重度使用及社媒/支付请换原生家宽 IP。",
+    ],
+    datacenter_risky: [
+      `高风险机房节点（${routeTagZh} · ${asnLabel}，风险 ${fraud}% / 纯净分 ${trust}；${hitNames.length ? `命中：${hitNames.join("、")}` : `ASN 机器流量 ${bot}%`}${reports ? `、历史举报 ${reports} 次` : ""}）。`,
+      "强烈不推荐 — 机房叠加代理/VPN/高滥用或跨区广播信号，极易被 Cloudflare 与各大 AI 平台拦截或直接封限。",
+      "严禁使用 — 用于账号注册、广告投放与支付结账会大概率触发秒封、砍单或风控拒付。",
+      envWarn.length ? `网络高危且本机存在偏差（${envWarn.join("、")}），敏感操作前必须更换纯净原生家宽。` : "仅建议作一次性无状态访问测试；所有敏感操作请切换低风险原生家宽 IP。",
+    ],
+    mobile: [
+      `移动蜂窝网络 IP（${asnLabel} · ${locCC}，风险 ${fraud}% / 纯净分 ${trust}，属运营商 CGNAT 多人共享出口）。`,
+      "基本可用 — 移动基站信誉普遍高于机房，ChatGPT / Claude 多可直连使用，并发高峰期偶发验证属正常情况。",
+      "适合移动端社媒与轻量运营 — 天然贴近手机用户画像；但固定长期跨境主店与大额结算仍推荐独享家宽。",
+      envWarn.length ? `请注意对齐本地设备参数（${envWarn.join("、")}）。` : "保持本机时区语言与运营商所在国一致，避免高频切换地理位置。",
+    ],
+    business: [
+      `企业 / 高校商业宽带 IP（${asnLabel} · ${locCC}，风险 ${fraud}% / 纯净分 ${trust}）。`,
+      "办公场景推荐 — 机构专线信誉稳定、不易误杀，ChatGPT / Claude 常规对话与办公 API 表现流畅。",
+      "个人 C 端社媒养号慎用 — 商企固定出口与家庭宽带行为模型不同，部分个人金融/电商风控会另行核验。",
+      envWarn.length ? `处理本机警告（${envWarn.join("、")}）后可直接用于日常工作流。` : "科研办公、开发与企业级使用可安心沿用；如需做个人养号孵化，建议搭配消费级家宽。",
+    ],
+  };
+  const [verdict, aiPlat, biz, tip] = map[profile];
   return [
-    `- **综合定性**：${verdict}（风险 ${fraud}% / 纯净分 ${report.scores.trust}）`,
+    `- **综合定性**：${verdict}`,
     `- **AI 平台 (ChatGPT/Claude)**：${aiPlat}`,
     `- **跨境 / 社媒 / 支付**：${biz}`,
     `- **实操建议**：${tip}`,
@@ -2011,50 +2250,59 @@ function buildRuleBasedAnalysis(report: Report, clientEnv: any, lang: Lang): str
 }
 
 function buildAiPrompts(lang: Lang, report: Report, clientEnv: any): { system: string; user: string } {
+  const profileCategory = classifyIpProfile(report);
   const payload = JSON.stringify({
     ip: report.ip,
-    country: report.location.countryCode,
-    city: report.location.city,
-    isNative: report.location.isNative,
-    registeredCountry: report.location.registeredCountryCode,
-    asn: report.network.asn,
+    profileCategory,
     networkType: report.type.code,
+    typeReason: report.type.reason,
     isResidential: report.type.residential,
-    company: report.company.name,
+    origin: report.location.isNative === true
+      ? `native (${report.location.registeredCountryCode})`
+      : report.location.isNative === false
+        ? `broadcast (${report.location.registeredCountryCode}->${report.location.countryCode})`
+        : "unknown",
+    geo: [report.location.city, report.location.region, report.location.countryCode].filter(Boolean).join(", "),
+    asn: report.network.asn,
+    company: report.company.name || report.network.org,
     riskScore: report.scores.fraud,
     purityScore: report.scores.trust,
     riskLevel: report.scores.riskCode,
+    scoreFactors: report.scores.breakdown.map((b) => `${b.key}:+${b.delta}`),
     humanPct: report.humanRatio.human,
     botPct: report.humanRatio.bot,
-    botScope: "ASN-wide 7d average, not single-IP traffic",
+    botScope: "ASN-wide 7d average, NOT single-IP traffic",
     abuseReports90d: report.abuse?.reports ?? 0,
     abuseConfidence: report.abuse?.confidence ?? 0,
+    openPorts: report.exposure.ports,
     exposureTags: report.exposure.tags,
-    detectedSignals: report.signals.filter((s) => s.detected).map((s) => s.key),
+    detectedSignals: report.signals.filter((s) => s.detected).map((s) => `${s.key}(${(s.hits || []).join(",")})`),
     clientWarnings: clientEnv?.warnings || [],
   });
 
+  const taxonomyNoteEn = "Classify accurately by profileCategory: native_residential_clean (clean home broadband; ignore macro ASN botPct 35-65% -> Highly recommended), native_residential_risky (polluted home broadband with abuse hits -> cautious/limit sensitive actions), broadcast_residential (non-native cross-border residential ISP -> usable for browsing/AI, caution on strict KYC/payments), dual_isp (hybrid ISP/hosting or residential proxy -> verification risk), datacenter_clean (native low-noise datacenter -> API/light use ok, CAPTCHA risk on AI, avoid accounts/payments), datacenter_risky (proxy/VPN/Tor/abused/broadcast DC -> Not recommended / avoid strictly), mobile (CGNAT cellular), business (enterprise/edu line).";
+
   if (lang === "en") {
     return {
-      system: "You are a strict IP risk analyst. Reply in concise English with exactly 4 Markdown bullet points (under 95 words total). Follow 3 strict rules: 1. botPct is the macro 7-day average of the entire ASN (major consumer ISPs commonly sit at 35%-65%) and does NOT measure a single residential IP. When isResidential is true and riskScore <= 20 with no proxy/vpn/tor/datacenter/abuse signals, you MUST classify it as clean low-risk residential and output 'Highly recommended' / 'Recommended' (never penalize it as 'Not recommended' due to ASN botPct). 2. If riskScore >= 31 or (!isResidential and botPct >= 70), NEVER call it 'high trust'; 31-50 is neutral/moderate risk. 3. Use clear verdicts: 'Highly recommended', 'Recommended', 'Usable', 'Browsing only', or 'Not recommended'.",
-      user: `Analyze this IP intelligence JSON and output exactly 4 bullets: 1.**Verdict** 2.**AI Platforms (ChatGPT/Claude)** 3.**Commerce / Social / Payments** 4.**Recommendation**.\n${payload}`,
+      system: `You are a senior IP fraud & risk analyst. Output concise English in EXACTLY 4 Markdown bullets (130-190 words total). Every bullet MUST give a clear conclusion PLUS concrete data evidence from the JSON (profileCategory, origin native/broadcast, riskScore/purityScore, botPct context, detectedSignals, abuseReports90d, openPorts, or clientWarnings). NEVER output vague 3-word filler like "Usable / Browsing only / Avoid risk" without specific reasoning. ${taxonomyNoteEn}`,
+      user: `Diagnose this IP telemetry JSON with 4 evidence-backed bullets: 1.**Verdict** 2.**AI Platforms (ChatGPT/Claude)** 3.**Commerce / Social / Payments** 4.**Recommendation**.\n${payload}`,
     };
   }
   if (lang === "zh-TW") {
     return {
-      system: "你是嚴謹的 IP 風控專家，請用極簡繁體中文輸出恰好 4 條 Markdown 列表（總字數 160 字內，禁止廢話）。嚴格遵守 3 條規則：1. botPct 是所屬整個電信商 ASN 近 7 天宏觀均值（大型家寬電信商整網常在 35%-65%），不代表當前單個住宅 IP 的行為；當 isResidential 為 true 且 riskScore <= 20（無代理/VPN/Tor/機房與惡意舉報）時，必須優先定性為純淨低風險家寬並給出「高度推薦」「推薦」，絕不可因 ASN 均值偏高而判為「不推薦」。2. 嚴禁前後矛盾：當 riskScore >= 31 或（非家寬且 botPct >= 70）時絕不可稱為「高信任度」，31-50 分定性為中性/中等風險。3. 嚴禁用孤立的「低，風險高」造成誤解，必須明確寫「高度推薦」「推薦」「基本可用」「僅限普通瀏覽」「不推薦（高風險/機房）」。",
-      user: `根據以下 IP 情報輸出 4 條精簡診斷：1.**綜合定性** 2.**AI 平台 (ChatGPT/Claude)** 3.**跨境 / 社群 / 支付** 4.**實操建議**。\n${payload}`,
+      system: "你是資深 IP 風控與網路情報分析專家。請用精準繁體中文輸出恰好 4 條 Markdown 列表（總字數 220–320 字）。每條都必須給出「明確結論 + 具體數據依據」（必須結合 profileCategory、origin 原生/廣播與註冊國→定位國、riskScore/purityScore、detectedSignals、abuseReports90d、openPorts 與 clientWarnings），嚴禁只寫「基本可用」「僅限普通瀏覽」「避免敏感操作」這類空泛短語！必須嚴格區分 8 類畫像：1. native_residential_clean（純淨原生家寬：若大網 botPct 在 35%-65% 僅屬全 ASN 均值，必須明確給出「高度推薦」「推薦」）；2. native_residential_risky（原生家寬但存在舉報/濫用污染，提示具體舉報與降權風險）；3. broadcast_residential（非原生/廣播家寬：說明註冊地與定位地偏差對 AI 與跨境/支付的影響）；4. dual_isp（雙 ISP / 住宅代理或混合託管段）；5. datacenter_clean（原生普通機房/雲主機：開發/輕量可用，AI 易遇驗證或降智，不推薦養號支付）；6. datacenter_risky（命中代理/VPN/Tor/高濫用或廣播機房：明確嚴禁核心帳號與支付）；7. mobile（蜂巢行動 CGNAT 共享出口）；8. business（企業/高校商業專線）。若 clientWarnings 非空，第 4 條必須明確點出本機指紋對齊建議。",
+      user: `根據以下 IP 情報 JSON 輸出 4 條具數據依據的精準診斷：1.**綜合定性** 2.**AI 平台 (ChatGPT/Claude)** 3.**跨境 / 社群 / 支付** 4.**實操建議**。\n${payload}`,
     };
   }
   if (lang === "ja") {
     return {
-      system: "あなたは厳格なIPリスクアナリストです。簡潔な日本語で4つのMarkdown箇条書き（合計170文字以内）のみを出力してください。次の3規則を厳守してください：1. botPct は所属ASN全体の7日間平均値であり、単一住宅IPの挙動ではありません。isResidential が true かつ riskScore <= 20（proxy/vpn/tor/datacenter/abuseなし）の場合は、ASNのbotPctが35%-65%前後でも必ず「低リスク住宅IP」「強く推奨」「推奨」と評価し、「非推奨」と誤判定しないでください。2. riskScore >= 31 または（非住宅かつ botPct >= 70）の場合は決して「高信頼」と書かず、31-50は中立リスクとしてください。3.「強く推奨」「推奨」「利用可能」「通常閲覧のみ」「非推奨」などの明確な表現を使ってください。",
-      user: `以下のIP情報から4項目を診断してください：1.**総合判定** 2.**AI プラットフォーム (ChatGPT/Claude)** 3.**EC / SNS / 決済** 4.**推奨アクション**。\n${payload}`,
+      system: "あなたはシニアIPリスクアナリストです。正確な日本語で4つのMarkdown箇条書きのみ（合計220〜320文字）を出力してください。各項目には必ず「明確な結論＋JSONの実測根拠」（profileCategory、native/broadcast由来、riskScore/purityScore、detectedSignals、abuseReports90d、openPorts、clientWarnings）を含め、「利用可能」「閲覧のみ」だけの曖昧な短文は禁止します。8分類を厳密に区別してください：native_residential_clean（純粋な住宅IP：ASNのbotPctが35-65%でも単一IPの異常ではないため「強く推奨」）、native_residential_risky（不正報告のある汚染住宅IP）、broadcast_residential（非ネイティブ/ブロードキャスト住宅IP：登録国と利用国の差異を指摘）、dual_isp（デュアルISP・住宅プロキシ混在）、datacenter_clean（通常のクラウド/DC：API/軽量向け、決済・SNSアカウント不可）、datacenter_risky（プロキシ/VPN/高不正/ブロードキャストDC：厳禁）、mobile（携帯キャリアCGNAT）、business（法人・教育回線）。clientWarningsがある場合は4項目目で具体的な環境修正を提案してください。",
+      user: `以下のIP情報JSONから根拠付きで4項目を診断してください：1.**総合判定** 2.**AI プラットフォーム (ChatGPT/Claude)** 3.**EC / SNS / 決済** 4.**推奨アクション**。\n${payload}`,
     };
   }
   return {
-    system: "你是严谨的 IP 风控专家，请用极简简体中文输出恰好 4 条 Markdown 列表（总字数 160 字内，禁止废话）。严格遵守 3 条规则：1. botPct 仅代表所属整个运营商 ASN 近 7 天宏观均值（电信/联通等大型家宽 ASN 整网常在 35%-65%），不代表当前单个住宅 IP 存在机器行为；当 isResidential 为 true 且 riskScore <= 20（无 proxy/vpn/tor/datacenter 及高危举报）时，必须优先定性为纯净/低风险家宽，并给出“高度推荐”“推荐”，绝不可因大网 botPct 偏高而误判为“不推荐”。2. 严禁前后矛盾：当 riskScore >= 31 或（非家宽且 botPct >= 70）时绝不可称为“高信任度”，31-50 分定性为中性/中等风险。3. 严禁写出“低，风险高”这类歧义短语，必须直接写“高度推荐”“推荐”“基本可用”“仅限普通浏览”“不推荐（高风险/机房）”。",
-    user: `根据以下真实 IP 情报输出 4 条简短诊断：1.**综合定性** 2.**AI 平台 (ChatGPT/Claude)** 3.**跨境 / 社媒 / 支付** 4.**实操建议**。\n${payload}`,
+    system: "你是资深 IP 风控与网络情报分析专家。请用精准简体中文输出恰好 4 条 Markdown 列表（总字数 220–320 字）。每条都必须包含「明确结论 + 具体数据依据」（需引用 profileCategory 类别、origin 原生或注册国→定位国广播、riskScore/purityScore、detectedSignals 命中源、abuseReports90d 举报与 openPorts 端口、以及 clientWarnings），严禁只写“基本可用”“仅限普通浏览”“避免敏感操作”这类空泛四字短语！必须精准区分全部 8 类 IP 画像：1. native_residential_clean（原生纯净家宽：明确若 botPct 在 35%-65% 仅为所属 ASN 全网均值不代表单 IP 异常，必须给出「高度推荐」「推荐」）；2. native_residential_risky（原生但存在举报/威胁污染的家宽，点名污染证据）；3. broadcast_residential（非原生/广播家宽：点名注册国与定位国偏差对原生 AI 锁区及跨境店铺/支付审核的影响）；4. dual_isp（双 ISP / 混合托管或家宽代理段）；5. datacenter_clean（原生普通机房/云主机：无匿名代理黑名单实锤时可做开发/API/轻量查询，AI 易遇验证或降智，跨境起号支付不推荐）；6. datacenter_risky（高危或代理/VPN/Tor/广播机房：极易拦截，严禁养号与支付）；7. mobile（移动蜂窝 CGNAT 共享出口）；8. business（企业/高校商用专线）。若 clientWarnings 非空，第 4 条必须给出对应本机浏览器环境修复建议。",
+    user: `请根据以下完整 IP 情报 JSON 输出 4 条有据可查的精准诊断：1.**综合定性** 2.**AI 平台 (ChatGPT/Claude)** 3.**跨境 / 社媒 / 支付** 4.**实操建议**。\n${payload}`,
   };
 }
 
@@ -2079,7 +2327,7 @@ async function callOpenAiCompat(
       body: JSON.stringify({
         model,
         temperature: 0.2,
-        max_tokens: 300,
+        max_tokens: 520,
         messages: [
           { role: "system", content: system },
           { role: "user", content: user },
@@ -2103,7 +2351,7 @@ async function generateAiReport(
   env?: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const envKey = clientEnv ? `${clientEnv.humanScore ?? ""}-${(clientEnv.warnings || []).length}` : "none";
-  const cacheKey = `${lang}:${report.ip}:${report.type.code}:${report.scores.fraud}:${report.humanRatio.bot}:${envKey}:v2`;
+  const cacheKey = `${lang}:${report.ip}:${report.type.code}:${report.scores.fraud}:${report.humanRatio.bot}:${envKey}:v3`;
   const hit = aiCache.get(cacheKey);
   if (hit && Date.now() - hit.at < AI_CACHE_TTL) return { ...hit.data, cached: true };
 
@@ -2148,7 +2396,7 @@ async function generateAiReport(
             { role: "system", content: system },
             { role: "user", content: user },
           ],
-          max_tokens: 280,
+          max_tokens: 520,
         });
         const text = String(aiRes?.response || aiRes?.choices?.[0]?.message?.content || "").trim();
         if (text.length < 20) throw new Error("empty");

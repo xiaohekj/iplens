@@ -293,7 +293,7 @@ const I18N = {
     "badge.nonRes": "Non-Residential · {label}",
     "risk.minimal": "Ultra Clean",
     "risk.low": "Low Risk",
-    "risk.medium": "Neutral",
+    "risk.medium": "Mild Risk",
     "risk.high": "High Risk",
     "risk.critical": "Critical Risk",
     "org.isp": "ISP",
@@ -334,9 +334,11 @@ const I18N = {
     "bd.proxy": ["Proxy Node", "Matched public or shared proxy pools"],
     "bd.dc_proxy": ["DC + Proxy Combo", "Combined datacenter and proxy risk"],
     "bd.abuseipdb": ["AbuseIPDB", "{reports} reports in 90d ({conf}% confidence)"],
+    "bd.abuse_history": ["Abuse History", "{reports} historical reports on AbuseIPDB"],
     "bd.abuse_generic": ["Abuse / Threat", "Flagged by threat intelligence sources"],
     "bd.crawler": ["Crawler Source", "Identified as commercial or automated scraper"],
     "bd.vulns": ["Exposed CVEs", "Shodan detected {count} known vulnerability signatures"],
+    "bd.open_ports": ["Exposed Service Ports", "Admin/proxy service ports open: {ports}"],
   },
 
   "zh-CN": {
@@ -623,7 +625,7 @@ const I18N = {
     "badge.nonRes": "非家宽 · {label}",
     "risk.minimal": "极度纯净",
     "risk.low": "低风险",
-    "risk.medium": "中性",
+    "risk.medium": "轻度风险",
     "risk.high": "高风险",
     "risk.critical": "极度风险",
     "org.isp": "运营商 (ISP)",
@@ -664,9 +666,11 @@ const I18N = {
     "bd.proxy": ["代理节点", "命中公开代理或转发节点"],
     "bd.dc_proxy": ["机房代理叠加", "机房 + 代理复合高危特征"],
     "bd.abuseipdb": ["AbuseIPDB 举报", "近 90 天被举报 {reports} 次（置信度 {conf}%）"],
+    "bd.abuse_history": ["历史举报记录", "AbuseIPDB 近 90 天存在 {reports} 次历史举报"],
     "bd.abuse_generic": ["滥用与威胁", "命中滥用或威胁情报源"],
     "bd.crawler": ["爬虫来源", "命中商业/抓取爬虫库"],
     "bd.vulns": ["暴露面漏洞", "Shodan 发现 {count} 个已知漏洞特征"],
+    "bd.open_ports": ["管理/代理端口暴露", "开放管理或代理端口：{ports}"],
   },
 
   "zh-TW": {
@@ -953,7 +957,7 @@ const I18N = {
     "badge.nonRes": "非家寬 · {label}",
     "risk.minimal": "極度純淨",
     "risk.low": "低風險",
-    "risk.medium": "中性",
+    "risk.medium": "輕度風險",
     "risk.high": "高風險",
     "risk.critical": "極度風險",
     "org.isp": "電信業者 (ISP)",
@@ -994,9 +998,11 @@ const I18N = {
     "bd.proxy": ["代理節點", "命中公開代理或轉發節點"],
     "bd.dc_proxy": ["機房代理疊加", "機房 + 代理複合高危特徵"],
     "bd.abuseipdb": ["AbuseIPDB 舉報", "近 90 天被舉報 {reports} 次（置信度 {conf}%）"],
+    "bd.abuse_history": ["歷史舉報記錄", "AbuseIPDB 近 90 天存在 {reports} 次歷史舉報"],
     "bd.abuse_generic": ["濫用與威脅", "命中濫用或威脅情報源"],
     "bd.crawler": ["爬蟲來源", "命中商業/抓取爬蟲庫"],
     "bd.vulns": ["暴露面漏洞", "Shodan 發現 {count} 個已知漏洞特徵"],
+    "bd.open_ports": ["管理/代理端口暴露", "開放管理或代理端口：{ports}"],
   },
 
   ja: {
@@ -1283,7 +1289,7 @@ const I18N = {
     "badge.nonRes": "非住宅 · {label}",
     "risk.minimal": "極めて安全",
     "risk.low": "低リスク",
-    "risk.medium": "中立",
+    "risk.medium": "軽度リスク",
     "risk.high": "高リスク",
     "risk.critical": "極めて高リスク",
     "org.isp": "ISP (通信事業者)",
@@ -1324,9 +1330,11 @@ const I18N = {
     "bd.proxy": ["プロキシ", "公開・共有プロキシに該当"],
     "bd.dc_proxy": ["DC + プロキシ複合", "データセンターとプロキシの複合リスク"],
     "bd.abuseipdb": ["AbuseIPDB 報告", "過去90日 {reports} 件（信頼度 {conf}%）"],
+    "bd.abuse_history": ["過去の報告履歴", "AbuseIPDB 過去90日に {reports} 件の履歴報告"],
     "bd.abuse_generic": ["不正・脅威", "脅威インテリジェンスに該当"],
     "bd.crawler": ["クローラー", "自動化クローラーに該当"],
     "bd.vulns": ["既知の脆弱性", "Shodan により {count} 件の CVE 兆候を検出"],
+    "bd.open_ports": ["管理/プロキシポート公開", "管理・プロキシ系ポート公開：{ports}"],
   },
 };
 
